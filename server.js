@@ -1,6 +1,6 @@
 // hoh-ws-server.js
 // Heart of Hope – WebSocket Engine
-// Rooms: body_chat, team_chat, foyer
+// Supports: body_chat, team_chat, foyer
 
 require('dotenv').config();
 
@@ -8,11 +8,17 @@ const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
-// ENV (set via process.env or .env)
+// If Node < 18, provide fetch
+if (typeof fetch === "undefined") {
+  global.fetch = (...args) =>
+    import('node-fetch').then(mod => mod.default(...args));
+}
+
+// ENV
 const PORT = process.env.HOH_WS_PORT || 435;
 const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
 
-// In-memory presence (can be moved to Redis later)
+// In-memory presence
 const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
 
 const server = http.createServer();
@@ -42,7 +48,9 @@ function broadcastToRoom(room, message, exceptWs = null) {
   }
 }
 
-// Handle new connection
+// ======================================================
+// HANDLE NEW CONNECTION
+// ======================================================
 wss.on('connection', (ws, req) => {
   try {
     const query = parseQuery(req.url || '');
@@ -72,6 +80,7 @@ wss.on('connection', (ws, req) => {
 
     clients.set(ws, meta);
 
+    // Auto-join rooms from query
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
@@ -79,6 +88,7 @@ wss.on('connection', (ws, req) => {
       });
     }
 
+    // Send initial welcome
     ws.send(JSON.stringify({
       type: 'connected',
       userId,
@@ -86,9 +96,9 @@ wss.on('connection', (ws, req) => {
       rooms: Array.from(meta.rooms)
     }));
 
-    // ===============================
+    // ======================================================
     // MESSAGE HANDLER
-    // ===============================
+    // ======================================================
     ws.on('message', (data) => {
       let msg;
       try {
@@ -97,11 +107,11 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      const { type, room } = msg; // FIXED
+      const { type, room } = msg;
 
-      // ===============================
+      // ======================================================
       // BODY CHAT: NEW MESSAGE
-      // ===============================
+      // ======================================================
       if (type === "message:new") {
 
         // Ensure sender is in the room
@@ -120,12 +130,10 @@ wss.on('connection', (ws, req) => {
         })
         .then(res => res.json())
         .then(saved => {
-
           broadcastToRoom("body_chat", {
             type: "message:new",
             message: saved
           }, ws);
-
         })
         .catch(err => {
           console.error("Failed to save Body Chat message:", err);
@@ -134,7 +142,49 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // (Your existing message handling continues here…)
+      // ======================================================
+      // LEGACY CHAT: TEAM / FOYER
+      // ======================================================
+      if (type === 'message' && room) {
+
+        if (!msg.text || msg.text.trim() === "") return;
+
+        const outgoing = {
+          type: 'message',
+          room,
+          text: msg.text,
+          user: { id: userId, name },
+          timestamp: Date.now()
+        };
+
+        broadcastToRoom(room, outgoing, ws);
+        return;
+      }
+
+      // JOIN ROOM
+      if (type === 'join' && room) {
+        meta.rooms.add(room);
+        ws.send(JSON.stringify({ type: 'joined', room }));
+        return;
+      }
+
+      // LEAVE ROOM
+      if (type === 'leave' && room) {
+        meta.rooms.delete(room);
+        ws.send(JSON.stringify({ type: 'left', room }));
+        return;
+      }
+
+      // TYPING / PRESENCE EVENTS
+      if (type === 'event' && room && msg.payload && msg.payload.event) {
+        broadcastToRoom(room, {
+          type: 'event',
+          room,
+          event: msg.payload.event,
+          data: msg.payload.data || {},
+          from: { userId, name }
+        }, ws);
+      }
     });
 
   } catch (err) {
@@ -143,69 +193,9 @@ wss.on('connection', (ws, req) => {
   }
 });
 
-  // ===============================
-  // HANDLE REAL CHAT MESSAGES
-  // ===============================
-  if (type === 'message' && room) {
-
-    // Ignore empty messages
-    if (!msg.text || msg.text.trim() === "") {
-      return;
-    }
-
-    const outgoing = {
-      type: 'message',
-      room,
-      text: msg.text,
-      user: { id: userId, name },
-      timestamp: Date.now()
-    };
-
-    broadcastToRoom(room, outgoing, ws);
-    return;
-  }
-
-  // ===============================
-  // JOIN ROOM
-  // ===============================
-  if (type === 'join' && room) {
-    meta.rooms.add(room);
-    ws.send(JSON.stringify({
-      type: 'joined',
-      room
-    }));
-    return;
-  }
-
-  // ===============================
-  // LEAVE ROOM
-  // ===============================
-  if (type === 'leave' && room) {
-    meta.rooms.delete(room);
-    ws.send(JSON.stringify({
-      type: 'left',
-      room
-    }));
-    return;
-  }
-
-  // ===============================
-  // BROADCAST TYPING / PRESENCE EVENTS
-  // ===============================
-  if (type === 'event' && room && payload && payload.event) {
-    broadcastToRoom(room, {
-      type: 'event',
-      room,
-      event: payload.event,
-      data: payload.data || {},
-      from: { userId, name }
-    }, ws);
-  }
-});
-
-
-// HTTP endpoint for WordPress to push events
-// Example: POST /emit with JSON { room, event, data }
+// ======================================================
+// HTTP ENDPOINT FOR WORDPRESS TO PUSH EVENTS
+// ======================================================
 server.on('request', (req, res) => {
   if (req.method === 'POST' && req.url === '/emit') {
     let body = '';
@@ -240,6 +230,9 @@ server.on('request', (req, res) => {
   }
 });
 
+// ======================================================
+// START SERVER
+// ======================================================
 server.listen(PORT, () => {
   console.log(`Heart of Hope WebSocket server listening on port ${PORT}`);
 });
