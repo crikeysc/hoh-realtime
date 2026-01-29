@@ -109,39 +109,40 @@ wss.on('connection', (ws, req) => {
 
       const { type, room } = msg;
 
-      // ======================================================
-      // BODY CHAT: NEW MESSAGE
-      // ======================================================
-      if (type === "message:new") {
-
-        // Ensure sender is in the room
-        meta.rooms.add("body_chat");
-
-        fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            body_chat_id: msg.body_chat_id,
-            user_id: meta.userId,
-            message: {
-              content: msg.message.content,
-              message_type: msg.message.message_type,
-              metadata: msg.message.metadata
-            }
-          })
-        .then(res => res.json())
-        .then(saved => {
-          broadcastToRoom("body_chat", {
-            type: "message:new",
-            message: saved
-          }, ws);
+     // ======================================================
+    // BODY CHAT: NEW MESSAGE
+    // ======================================================
+    if (type === "message:new") {
+    
+      // Ensure sender is in the room
+      meta.rooms.add("body_chat");
+    
+      fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body_chat_id: msg.body_chat_id,
+          user_id: meta.userId,
+          message: {
+            content: msg.message.content,
+            message_type: msg.message.message_type,
+            metadata: msg.message.metadata
+          }
         })
-        .catch(err => {
-          console.error("Failed to save Body Chat message:", err);
-        });
-
-        return;
-      }
+      })
+      .then(res => res.json())
+      .then(saved => {
+        broadcastToRoom("body_chat", {
+          type: "message:new",
+          message: saved
+        }, ws);
+      })
+      .catch(err => {
+        console.error("Failed to save Body Chat message:", err);
+      });
+    
+      return;
+    }
 
       // ======================================================
       // LEGACY CHAT: TEAM / FOYER
