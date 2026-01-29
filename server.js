@@ -123,11 +123,12 @@ wss.on('connection', (ws, req) => {
           body: JSON.stringify({
             body_chat_id: msg.body_chat_id,
             user_id: meta.userId,
-            content: msg.message.content,
-            message_type: msg.message.message_type,
-            metadata: msg.message.metadata
+            message: {
+              content: msg.message.content,
+              message_type: msg.message.message_type,
+              metadata: msg.message.metadata
+            }
           })
-        })
         .then(res => res.json())
         .then(saved => {
           broadcastToRoom("body_chat", {
