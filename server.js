@@ -15,7 +15,7 @@ if (typeof fetch === "undefined") {
 }
 
 // ENV
-const PORT = process.env.HOH_WS_PORT || 435;
+const PORT = process.env.PORT || 435;
 const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
 
 // In-memory presence
