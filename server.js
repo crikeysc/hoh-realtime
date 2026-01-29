@@ -235,6 +235,7 @@ server.on('request', (req, res) => {
 // ======================================================
 // START SERVER
 // ======================================================
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Heart of Hope WebSocket server listening on port ${PORT}`);
 });
+
