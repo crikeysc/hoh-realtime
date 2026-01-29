@@ -1,6 +1,7 @@
 // hoh-ws-server.js
 // Heart of Hope – WebSocket Engine
 // Supports: body_chat, team_chat, foyer
+// Server start confirmed — Render sync test
 
 require('dotenv').config();
 
