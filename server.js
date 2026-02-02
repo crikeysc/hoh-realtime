@@ -89,7 +89,7 @@ wss.on('connection', (ws, req) => {
       });
     }
 
-    // Send initial welcome
+    // Initial welcome
     ws.send(JSON.stringify({
       type: 'connected',
       userId,
@@ -97,127 +97,136 @@ wss.on('connection', (ws, req) => {
       rooms: Array.from(meta.rooms)
     }));
 
-// ======================================================
-// MESSAGE HANDLER
-// ======================================================
-ws.on('message', (data) => {
-    let msg;
-    try {
+    // ======================================================
+    // MESSAGE HANDLER
+    // ======================================================
+    ws.on('message', (data) => {
+      let msg;
+      try {
         msg = JSON.parse(data.toString());
-    } catch {
+      } catch {
         return;
-    }
+      }
 
-    const { type } = msg;
+      const { type } = msg;
 
-    // ======================================================
-    // CONNECT / JOIN ROOM
-    // ======================================================
-    if (type === "connect") {
-        // Put this client into the body_chat room
+      // ======================================================
+      // CONNECT / JOIN ROOM
+      // ======================================================
+      if (type === "connect") {
         meta.rooms.add("body_chat");
 
-        // Optional: acknowledge
         ws.send(JSON.stringify({
-            type: "connected",
-            room: "body_chat"
+          type: "connected",
+          room: "body_chat"
         }));
 
         return;
-    }
+      }
 
-    // ======================================================
-    // BODY CHAT: NEW MESSAGE
-    // ======================================================
-    if (type === "message:new") {
+      // ======================================================
+      // BODY CHAT: NEW MESSAGE
+      // ======================================================
+      if (type === "message:new") {
         meta.rooms.add("body_chat");
 
         fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                body_chat_id: msg.body_chat_id,
-                user_id: meta.userId,
-                message: {
-                    content: msg.message.content,
-                    message_type: msg.message.message_type,
-                    metadata: msg.message.metadata
-                }
-            })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body_chat_id: msg.body_chat_id,
+            user_id: meta.userId,
+            message: {
+              content: msg.message.content,
+              message_type: msg.message.message_type,
+              metadata: msg.message.metadata
+            }
+          })
         })
         .then(res => res.json())
         .then(saved => {
-            broadcastToRoom("body_chat", {
-                type: "message:new",
-                message: saved
-            }, ws);
+          broadcastToRoom("body_chat", {
+            type: "message:new",
+            message: saved
+          }, ws);
         })
         .catch(err => {
-            console.error("Failed to save Body Chat message:", err);
+          console.error("Failed to save Body Chat message:", err);
         });
 
         return;
-    }
+      }
 
-    // ======================================================
-    // BODY CHAT: UPDATE MESSAGE
-    // ======================================================
-    if (type === "message:update") {
+      // ======================================================
+      // BODY CHAT: UPDATE MESSAGE
+      // ======================================================
+      if (type === "message:update") {
         meta.rooms.add("body_chat");
 
         fetch(
-            "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
-            encodeURIComponent(msg.message_id),
-            {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    content: msg.content
-                })
-            }
+          "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
+          encodeURIComponent(msg.message_id),
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              content: msg.content
+            })
+          }
         )
         .then(res => res.json())
         .then(updated => {
-            broadcastToRoom("body_chat", {
-                type: "message:update",
-                message: updated
-            }, ws);
+          broadcastToRoom("body_chat", {
+            type: "message:update",
+            message: updated
+          }, ws);
         })
         .catch(err => {
-            console.error("Failed to update Body Chat message:", err);
+          console.error("Failed to update Body Chat message:", err);
         });
 
         return;
-    }
+      }
 
-    // ======================================================
-    // BODY CHAT: DELETE MESSAGE
-    // ======================================================
-    if (type === "message:delete") {
+      // ======================================================
+      // BODY CHAT: DELETE MESSAGE
+      // ======================================================
+      if (type === "message:delete") {
         meta.rooms.add("body_chat");
 
         fetch(
-            "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
-            encodeURIComponent(msg.message_id),
-            {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" }
-            }
+          "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
+          encodeURIComponent(msg.message_id),
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" }
+          }
         )
         .then(res => res.json())
         .then(() => {
-            broadcastToRoom("body_chat", {
-                type: "message:delete",
-                message_id: msg.message_id
-            }, ws);
+          broadcastToRoom("body_chat", {
+            type: "message:delete",
+            message_id: msg.message_id
+          }, ws);
         })
         .catch(err => {
-            console.error("Failed to delete Body Chat message:", err);
+          console.error("Failed to delete Body Chat message:", err);
         });
 
         return;
-    }
+      }
+    });
+
+    ws.on('close', () => {
+      clients.delete(ws);
+    });
+
+  } catch (err) {
+    console.error("Connection error:", err);
+    ws.close();
+  }
 });
+
 
       
       // ======================================================
