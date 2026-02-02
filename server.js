@@ -97,44 +97,41 @@ wss.on('connection', (ws, req) => {
       rooms: Array.from(meta.rooms)
     }));
 
-    // ======================================================
-    // MESSAGE HANDLER
-    // ======================================================
-    ws.on('message', (data) => {
-      let msg;
-      try {
+// ======================================================
+// MESSAGE HANDLER
+// ======================================================
+ws.on('message', (data) => {
+    let msg;
+    try {
         msg = JSON.parse(data.toString());
-      } catch {
+    } catch {
         return;
-      }
+    }
 
-      const { type, room } = msg;
+    const { type } = msg;
 
+    // ======================================================
+    // CONNECT / JOIN ROOM
+    // ======================================================
+    if (type === "connect") {
+        // Put this client into the body_chat room
+        meta.rooms.add("body_chat");
 
-      // ======================================================
-      // BODY CHAT: CONNECT / JOIN ROOM
-      // ======================================================
-      if (type === "connect") {
-          // Put this client into the body_chat room
-          meta.rooms.add("body_chat");
-      
-          // (Optional) Acknowledge connection
-          ws.send(JSON.stringify({
-              type: "connected",
-              room: "body_chat"
-          }));
-      
-          return;
-      }
-      
-      
+        // Optional: acknowledge
+        ws.send(JSON.stringify({
+            type: "connected",
+            room: "body_chat"
+        }));
+
+        return;
+    }
+
     // ======================================================
     // BODY CHAT: NEW MESSAGE
     // ======================================================
     if (type === "message:new") {
-        // Ensure sender is in the room
         meta.rooms.add("body_chat");
-    
+
         fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -150,7 +147,6 @@ wss.on('connection', (ws, req) => {
         })
         .then(res => res.json())
         .then(saved => {
-            // Broadcast the FULL saved message object
             broadcastToRoom("body_chat", {
                 type: "message:new",
                 message: saved
@@ -159,7 +155,7 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
             console.error("Failed to save Body Chat message:", err);
         });
-    
+
         return;
     }
 
@@ -167,9 +163,8 @@ wss.on('connection', (ws, req) => {
     // BODY CHAT: UPDATE MESSAGE
     // ======================================================
     if (type === "message:update") {
-        // Ensure sender is in the room
         meta.rooms.add("body_chat");
-    
+
         fetch(
             "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
             encodeURIComponent(msg.message_id),
@@ -183,7 +178,6 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(updated => {
-            // Broadcast the FULL updated message object
             broadcastToRoom("body_chat", {
                 type: "message:update",
                 message: updated
@@ -192,18 +186,16 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
             console.error("Failed to update Body Chat message:", err);
         });
-    
+
         return;
     }
-
 
     // ======================================================
     // BODY CHAT: DELETE MESSAGE
     // ======================================================
     if (type === "message:delete") {
-        // Ensure sender is in the room
         meta.rooms.add("body_chat");
-    
+
         fetch(
             "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
             encodeURIComponent(msg.message_id),
@@ -214,7 +206,6 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(() => {
-            // Broadcast the delete event with the ID only
             broadcastToRoom("body_chat", {
                 type: "message:delete",
                 message_id: msg.message_id
@@ -223,9 +214,11 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
             console.error("Failed to delete Body Chat message:", err);
         });
-    
+
         return;
     }
+});
+
       
       // ======================================================
       // LEGACY CHAT: TEAM / FOYER
