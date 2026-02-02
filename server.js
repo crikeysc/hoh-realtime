@@ -226,60 +226,7 @@ wss.on('connection', (ws, req) => {
     ws.close();
   }
 });
-
-
-      
-      // ======================================================
-      // LEGACY CHAT: TEAM / FOYER
-      // ======================================================
-      if (type === 'message' && room) {
-
-        if (!msg.text || msg.text.trim() === "") return;
-
-        const outgoing = {
-          type: 'message',
-          room,
-          text: msg.text,
-          user: { id: userId, name },
-          timestamp: Date.now()
-        };
-
-        broadcastToRoom(room, outgoing, ws);
-        return;
-      }
-
-      // JOIN ROOM
-      if (type === 'join' && room) {
-        meta.rooms.add(room);
-        ws.send(JSON.stringify({ type: 'joined', room }));
-        return;
-      }
-
-      // LEAVE ROOM
-      if (type === 'leave' && room) {
-        meta.rooms.delete(room);
-        ws.send(JSON.stringify({ type: 'left', room }));
-        return;
-      }
-
-      // TYPING / PRESENCE EVENTS
-      if (type === 'event' && room && msg.payload && msg.payload.event) {
-        broadcastToRoom(room, {
-          type: 'event',
-          room,
-          event: msg.payload.event,
-          data: msg.payload.data || {},
-          from: { userId, name }
-        }, ws);
-      }
-    });
-
-  } catch (err) {
-    console.error("Connection error:", err);
-    ws.close();
-  }
-});
-
+    
 // ======================================================
 // HTTP ENDPOINT FOR WORDPRESS TO PUSH EVENTS
 // ======================================================
