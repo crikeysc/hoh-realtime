@@ -146,6 +146,63 @@ wss.on('connection', (ws, req) => {
     }
 
       // ======================================================
+    // BODY CHAT: UPDATE MESSAGE
+    // ======================================================
+    if (type === "message:update") {
+      // Ensure sender is in the room
+      meta.rooms.add("body_chat");
+
+      fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" + encodeURIComponent(msg.message_id), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: msg.content
+        })
+      })
+      .then(res => res.json())
+      .then(() => {
+        // Broadcast the update to all clients in body_chat
+        broadcastToRoom("body_chat", {
+          type: "message:update",
+          message_id: msg.message_id,
+          content: msg.content
+        }, ws);
+      })
+      .catch(err => {
+        console.error("Failed to update Body Chat message:", err);
+      });
+
+      return;
+    }
+
+    // ======================================================
+    // BODY CHAT: DELETE MESSAGE
+    // ======================================================
+    if (type === "message:delete") {
+      // Ensure sender is in the room
+      meta.rooms.add("body_chat");
+
+      fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" + encodeURIComponent(msg.message_id), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+      })
+      .then(res => res.json())
+      .then(() => {
+        // Broadcast the delete to all clients in body_chat
+        broadcastToRoom("body_chat", {
+          type: "message:delete",
+          message_id: msg.message_id
+        }, ws);
+      })
+      .catch(err => {
+        console.error("Failed to delete Body Chat message:", err);
+      });
+
+      return;
+    }
+
+      
+      // ======================================================
       // LEGACY CHAT: TEAM / FOYER
       // ======================================================
       if (type === 'message' && room) {
