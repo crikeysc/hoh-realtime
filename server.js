@@ -110,6 +110,24 @@ wss.on('connection', (ws, req) => {
 
       const { type, room } = msg;
 
+
+      // ======================================================
+      // BODY CHAT: CONNECT / JOIN ROOM
+      // ======================================================
+      if (type === "connect") {
+          // Put this client into the body_chat room
+          meta.rooms.add("body_chat");
+      
+          // (Optional) Acknowledge connection
+          ws.send(JSON.stringify({
+              type: "connected",
+              room: "body_chat"
+          }));
+      
+          return;
+      }
+      
+      
     // ======================================================
     // BODY CHAT: NEW MESSAGE
     // ======================================================
