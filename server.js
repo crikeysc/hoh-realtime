@@ -184,7 +184,7 @@ wss.on('connection', (ws, req) => {
       // ======================================================
       if (type === "message:update") {
         console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
-
+      
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -199,21 +199,22 @@ wss.on('connection', (ws, req) => {
         .then(res => res.json())
         .then(updated => {
           console.log("💾 Updated message:", updated);
-
-          .then(() => {
+      
+          // WordPress returns { status: "updated" }
+          // So we broadcast using the original msg
           broadcastToRoom("body_chat", {
             type: "message:update",
             message_id: msg.message_id,
             content: msg.content
           }, ws);
         })
-
         .catch(err => {
           console.error("❌ Failed to update Body Chat message:", err);
         });
-
+      
         return;
       }
+
 
       // ======================================================
       // BODY CHAT: DELETE MESSAGE
