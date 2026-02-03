@@ -162,7 +162,7 @@ wss.on('connection', (ws, req) => {
       // ======================================================
       if (type === "message:update") {
         meta.rooms.add("body_chat");
-      
+
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -186,16 +186,16 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
           console.error("Failed to update Body Chat message:", err);
         });
-      
+
         return;
       }
-      
+
       // ======================================================
       // BODY CHAT: DELETE MESSAGE
       // ======================================================
       if (type === "message:delete") {
         meta.rooms.add("body_chat");
-      
+
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -206,7 +206,6 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(() => {
-          // ⭐ DELETE WAS ALREADY CORRECT ⭐
           broadcastToRoom("body_chat", {
             type: "message:delete",
             message_id: msg.message_id
@@ -215,11 +214,22 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
           console.error("Failed to delete Body Chat message:", err);
         });
-      
+
         return;
       }
 
-    
+    }); // <-- closes ws.on('message')
+
+    ws.on('close', () => {
+      clients.delete(ws);
+    });
+
+  } catch (err) {
+    console.error("Connection error:", err);
+    ws.close();
+  }
+}); // <-- closes wss.on('connection')
+
 // ======================================================
 // HTTP ENDPOINT FOR WORDPRESS TO PUSH EVENTS
 // ======================================================
@@ -263,4 +273,3 @@ server.on('request', (req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Heart of Hope WebSocket server listening on port ${PORT}`);
 });
-
