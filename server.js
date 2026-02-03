@@ -162,7 +162,7 @@ wss.on('connection', (ws, req) => {
       // ======================================================
       if (type === "message:update") {
         meta.rooms.add("body_chat");
-
+      
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -176,24 +176,26 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(updated => {
+          // ⭐ FIXED PAYLOAD SHAPE ⭐
           broadcastToRoom("body_chat", {
             type: "message:update",
-            message: updated
+            message_id: updated.id,
+            content: updated.content
           }, ws);
         })
         .catch(err => {
           console.error("Failed to update Body Chat message:", err);
         });
-
+      
         return;
       }
-
+      
       // ======================================================
       // BODY CHAT: DELETE MESSAGE
       // ======================================================
       if (type === "message:delete") {
         meta.rooms.add("body_chat");
-
+      
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -204,6 +206,7 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(() => {
+          // ⭐ DELETE WAS ALREADY CORRECT ⭐
           broadcastToRoom("body_chat", {
             type: "message:delete",
             message_id: msg.message_id
@@ -212,20 +215,10 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
           console.error("Failed to delete Body Chat message:", err);
         });
-
+      
         return;
       }
-    });
 
-    ws.on('close', () => {
-      clients.delete(ws);
-    });
-
-  } catch (err) {
-    console.error("Connection error:", err);
-    ws.close();
-  }
-});
     
 // ======================================================
 // HTTP ENDPOINT FOR WORDPRESS TO PUSH EVENTS
