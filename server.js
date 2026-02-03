@@ -81,7 +81,10 @@ wss.on('connection', (ws, req) => {
 
     clients.set(ws, meta);
 
-    // Auto-join rooms from query
+    // ⭐ ALWAYS JOIN body_chat IMMEDIATELY ⭐
+    meta.rooms.add("body_chat");
+
+    // Auto-join rooms from query (optional)
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
