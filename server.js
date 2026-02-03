@@ -1,7 +1,5 @@
 // hoh-ws-server.js
-// Heart of Hope – WebSocket Engine
-// Supports: body_chat, team_chat, foyer
-// Server start confirmed — Render sync test
+// Heart of Hope – WebSocket Engine (with full debug logging)
 
 require('dotenv').config();
 
@@ -16,7 +14,7 @@ if (typeof fetch === "undefined") {
 }
 
 // ENV
-const PORT = process.env.PORT;  // ⭐ No fallback on Render
+const PORT = process.env.PORT;
 const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
 
 // In-memory presence
@@ -41,10 +39,14 @@ function parseQuery(url) {
 
 // Helper: broadcast to room
 function broadcastToRoom(room, message, exceptWs = null) {
+  console.log(`📢 BROADCAST to room "${room}":`, message);
+
   for (const [ws, meta] of clients.entries()) {
     if (ws.readyState !== WebSocket.OPEN) continue;
     if (!meta.rooms.has(room)) continue;
     if (ws === exceptWs) continue;
+
+    console.log(`   ↳ Sent to user ${meta.userId}`);
     ws.send(JSON.stringify(message));
   }
 }
@@ -53,11 +55,14 @@ function broadcastToRoom(room, message, exceptWs = null) {
 // HANDLE NEW CONNECTION
 // ======================================================
 wss.on('connection', (ws, req) => {
+  console.log("🔌 New WS connection:", req.url);
+
   try {
     const query = parseQuery(req.url || '');
     const token = query.token;
 
     if (!token) {
+      console.log("❌ Missing token — closing connection");
       ws.close(4001, 'Missing token');
       return;
     }
@@ -65,7 +70,9 @@ wss.on('connection', (ws, req) => {
     let payload;
     try {
       payload = jwt.verify(token, JWT_SECRET);
+      console.log("🔑 Token verified:", payload);
     } catch (err) {
+      console.log("❌ Invalid token:", err.message);
       ws.close(4002, 'Invalid token');
       return;
     }
@@ -81,14 +88,20 @@ wss.on('connection', (ws, req) => {
 
     clients.set(ws, meta);
 
-    // ⭐ ALWAYS JOIN body_chat IMMEDIATELY ⭐
-    meta.rooms.add("body_chat");
+    console.log(`👤 User connected: ${userId} (${name})`);
 
-    // Auto-join rooms from query (optional)
+    // ⭐ ALWAYS JOIN body_chat
+    meta.rooms.add("body_chat");
+    console.log(`📌 User ${userId} auto-joined room: body_chat`);
+
+    // Auto-join rooms from query
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
-        if (room) meta.rooms.add(room);
+        if (room) {
+          meta.rooms.add(room);
+          console.log(`📌 User ${userId} joined room: ${room}`);
+        }
       });
     }
 
@@ -104,10 +117,13 @@ wss.on('connection', (ws, req) => {
     // MESSAGE HANDLER
     // ======================================================
     ws.on('message', (data) => {
+      console.log("📩 WS MESSAGE RECEIVED:", data.toString());
+
       let msg;
       try {
         msg = JSON.parse(data.toString());
       } catch {
+        console.log("❌ Invalid JSON from client");
         return;
       }
 
@@ -117,6 +133,7 @@ wss.on('connection', (ws, req) => {
       // CONNECT / JOIN ROOM
       // ======================================================
       if (type === "connect") {
+        console.log(`🔗 CONNECT event from user ${meta.userId}`);
         meta.rooms.add("body_chat");
 
         ws.send(JSON.stringify({
@@ -131,7 +148,7 @@ wss.on('connection', (ws, req) => {
       // BODY CHAT: NEW MESSAGE
       // ======================================================
       if (type === "message:new") {
-        meta.rooms.add("body_chat");
+        console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
 
         fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
           method: "POST",
@@ -148,13 +165,15 @@ wss.on('connection', (ws, req) => {
         })
         .then(res => res.json())
         .then(saved => {
+          console.log("💾 Saved NEW message:", saved);
+
           broadcastToRoom("body_chat", {
             type: "message:new",
             message: saved
           }, ws);
         })
         .catch(err => {
-          console.error("Failed to save Body Chat message:", err);
+          console.error("❌ Failed to save Body Chat message:", err);
         });
 
         return;
@@ -164,7 +183,7 @@ wss.on('connection', (ws, req) => {
       // BODY CHAT: UPDATE MESSAGE
       // ======================================================
       if (type === "message:update") {
-        meta.rooms.add("body_chat");
+        console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
@@ -179,7 +198,8 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(updated => {
-          // ⭐ FIXED PAYLOAD SHAPE ⭐
+          console.log("💾 Updated message:", updated);
+
           broadcastToRoom("body_chat", {
             type: "message:update",
             message_id: updated.id,
@@ -187,7 +207,7 @@ wss.on('connection', (ws, req) => {
           }, ws);
         })
         .catch(err => {
-          console.error("Failed to update Body Chat message:", err);
+          console.error("❌ Failed to update Body Chat message:", err);
         });
 
         return;
@@ -197,7 +217,7 @@ wss.on('connection', (ws, req) => {
       // BODY CHAT: DELETE MESSAGE
       // ======================================================
       if (type === "message:delete") {
-        meta.rooms.add("body_chat");
+        console.log(`🗑️ DELETE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
@@ -209,64 +229,30 @@ wss.on('connection', (ws, req) => {
         )
         .then(res => res.json())
         .then(() => {
+          console.log("💾 Deleted message:", msg.message_id);
+
           broadcastToRoom("body_chat", {
             type: "message:delete",
             message_id: msg.message_id
           }, ws);
         })
         .catch(err => {
-          console.error("Failed to delete Body Chat message:", err);
+          console.error("❌ Failed to delete Body Chat message:", err);
         });
 
         return;
       }
 
-    }); // <-- closes ws.on('message')
+    }); // ws.on('message')
 
     ws.on('close', () => {
+      console.log(`🔌 WS CLOSED for user ${meta.userId}`);
       clients.delete(ws);
     });
 
   } catch (err) {
-    console.error("Connection error:", err);
+    console.error("❌ Connection error:", err);
     ws.close();
-  }
-}); // <-- closes wss.on('connection')
-
-// ======================================================
-// HTTP ENDPOINT FOR WORDPRESS TO PUSH EVENTS
-// ======================================================
-server.on('request', (req, res) => {
-  if (req.method === 'POST' && req.url === '/emit') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { room, event, data } = JSON.parse(body || '{}');
-        if (!room || !event) {
-          res.statusCode = 400;
-          res.end('Missing room or event');
-          return;
-        }
-
-        broadcastToRoom(room, {
-          type: 'event',
-          room,
-          event,
-          data: data || {},
-          from: { system: true }
-        });
-
-        res.statusCode = 200;
-        res.end('OK');
-      } catch {
-        res.statusCode = 400;
-        res.end('Invalid JSON');
-      }
-    });
-  } else {
-    res.statusCode = 404;
-    res.end('Not found');
   }
 });
 
@@ -274,5 +260,5 @@ server.on('request', (req, res) => {
 // START SERVER
 // ======================================================
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Heart of Hope WebSocket server listening on port ${PORT}`);
+  console.log(`🚀 Heart of Hope WebSocket server listening on port ${PORT}`);
 });
