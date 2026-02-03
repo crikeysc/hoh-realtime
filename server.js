@@ -200,12 +200,14 @@ wss.on('connection', (ws, req) => {
         .then(updated => {
           console.log("💾 Updated message:", updated);
 
+          .then(() => {
           broadcastToRoom("body_chat", {
             type: "message:update",
-            message_id: updated.id,
-            content: updated.content
+            message_id: msg.message_id,
+            content: msg.content
           }, ws);
         })
+
         .catch(err => {
           console.error("❌ Failed to update Body Chat message:", err);
         });
