@@ -206,7 +206,7 @@ wss.on('connection', (ws, req) => {
             type: "message:update",
             message_id: msg.message_id,
             content: msg.content
-          }, ws);
+          });
         })
         .catch(err => {
           console.error("❌ Failed to update Body Chat message:", err);
@@ -237,7 +237,7 @@ wss.on('connection', (ws, req) => {
           broadcastToRoom("body_chat", {
             type: "message:delete",
             message_id: msg.message_id
-          }, ws);
+          });
         })
         .catch(err => {
           console.error("❌ Failed to delete Body Chat message:", err);
