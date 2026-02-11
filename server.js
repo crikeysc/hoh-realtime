@@ -90,11 +90,10 @@ wss.on('connection', (ws, req) => {
 
     console.log(`👤 User connected: ${userId} (${name})`);
 
-    // ⭐ ALWAYS JOIN body_chat
-    meta.rooms.add("body_chat");
-    console.log(`📌 User ${userId} auto-joined room: body_chat`);
+    // ⭐ REMOVE the forced static room join
+    // meta.rooms.add("body_chat");
 
-    // Auto-join rooms from query
+    // ⭐ Auto-join rooms from query (dynamic)
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
@@ -130,25 +129,12 @@ wss.on('connection', (ws, req) => {
       const { type } = msg;
 
       // ======================================================
-      // CONNECT / JOIN ROOM
-      // ======================================================
-      if (type === "connect") {
-        console.log(`🔗 CONNECT event from user ${meta.userId}`);
-        meta.rooms.add("body_chat");
-
-        ws.send(JSON.stringify({
-          type: "connected",
-          room: "body_chat"
-        }));
-
-        return;
-      }
-
-      // ======================================================
       // BODY CHAT: NEW MESSAGE
       // ======================================================
       if (type === "message:new") {
         console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
+
+        const room = `body_chat_${msg.body_chat_id}`;
 
         fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
           method: "POST",
@@ -167,7 +153,8 @@ wss.on('connection', (ws, req) => {
         .then(saved => {
           console.log("💾 Saved NEW message:", saved);
 
-          broadcastToRoom("body_chat", {
+          // ⭐ Broadcast to the correct dynamic room
+          broadcastToRoom(room, {
             type: "message:new",
             message: saved
           }, ws);
@@ -184,7 +171,9 @@ wss.on('connection', (ws, req) => {
       // ======================================================
       if (type === "message:update") {
         console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
-      
+
+        const room = `body_chat_${msg.body_chat_id}`;
+
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
           encodeURIComponent(msg.message_id),
@@ -197,12 +186,11 @@ wss.on('connection', (ws, req) => {
           }
         )
         .then(res => res.json())
-        .then(updated => {
-          console.log("💾 Updated message:", updated);
-      
-          // WordPress returns { status: "updated" }
-          // So we broadcast using the original msg
-          broadcastToRoom("body_chat", {
+        .then(() => {
+          console.log("💾 Updated message:", msg.message_id);
+
+          // ⭐ Broadcast to the correct dynamic room
+          broadcastToRoom(room, {
             type: "message:update",
             message_id: msg.message_id,
             content: msg.content
@@ -211,16 +199,17 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
           console.error("❌ Failed to update Body Chat message:", err);
         });
-      
+
         return;
       }
-
 
       // ======================================================
       // BODY CHAT: DELETE MESSAGE
       // ======================================================
       if (type === "message:delete") {
         console.log(`🗑️ DELETE MESSAGE ${msg.message_id} from user ${meta.userId}`);
+
+        const room = `body_chat_${msg.body_chat_id}`;
 
         fetch(
           "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
@@ -234,7 +223,8 @@ wss.on('connection', (ws, req) => {
         .then(() => {
           console.log("💾 Deleted message:", msg.message_id);
 
-          broadcastToRoom("body_chat", {
+          // ⭐ Broadcast to the correct dynamic room
+          broadcastToRoom(room, {
             type: "message:delete",
             message_id: msg.message_id
           });
