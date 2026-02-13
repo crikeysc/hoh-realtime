@@ -1,5 +1,5 @@
 // hoh-ws-server.js
-// Heart of Hope – WebSocket Engine (with full debug logging)
+// Heart of Hope – Universal WebSocket Engine (Body, Team, Foyer)
 
 require('dotenv').config();
 
@@ -7,7 +7,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
-// If Node < 18, provide fetch
+// Node < 18 fallback
 if (typeof fetch === "undefined") {
   global.fetch = (...args) =>
     import('node-fetch').then(mod => mod.default(...args));
@@ -23,7 +23,9 @@ const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
 const server = http.createServer();
 const wss = new WebSocket.Server({ server });
 
-// Helper: parse query string
+// ------------------------------------------------------
+// Helpers
+// ------------------------------------------------------
 function parseQuery(url) {
   const out = {};
   const qIndex = url.indexOf('?');
@@ -37,7 +39,6 @@ function parseQuery(url) {
   return out;
 }
 
-// Helper: broadcast to room
 function broadcastToRoom(room, message, exceptWs = null) {
   console.log(`📢 BROADCAST to room "${room}":`, message);
 
@@ -51,9 +52,28 @@ function broadcastToRoom(room, message, exceptWs = null) {
   }
 }
 
-// ======================================================
-// HANDLE NEW CONNECTION
-// ======================================================
+// ------------------------------------------------------
+// Universal REST endpoint resolver
+// ------------------------------------------------------
+function getRestBase(chatType) {
+  switch (chatType) {
+    case "body":  return "https://dev.heartofhope777.site/wp-json/bodychat/v1/message";
+    case "team":  return "https://dev.heartofhope777.site/wp-json/teamchat/v1/message";
+    case "foyer": return "https://dev.heartofhope777.site/wp-json/foyerchat/v1/message";
+    default:      return null;
+  }
+}
+
+// ------------------------------------------------------
+// Universal room resolver
+// ------------------------------------------------------
+function getRoomName(chatType, chatId) {
+  return `${chatType}_chat_${chatId}`;
+}
+
+// ------------------------------------------------------
+// WebSocket Connection
+// ------------------------------------------------------
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
@@ -90,10 +110,7 @@ wss.on('connection', (ws, req) => {
 
     console.log(`👤 User connected: ${userId} (${name})`);
 
-    // ⭐ REMOVE the forced static room join
-    // meta.rooms.add("body_chat");
-
-    // ⭐ Auto-join rooms from query (dynamic)
+    // Dynamic room join
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
@@ -104,7 +121,6 @@ wss.on('connection', (ws, req) => {
       });
     }
 
-    // Initial welcome
     ws.send(JSON.stringify({
       type: 'connected',
       userId,
@@ -112,9 +128,9 @@ wss.on('connection', (ws, req) => {
       rooms: Array.from(meta.rooms)
     }));
 
-    // ======================================================
+    // ------------------------------------------------------
     // MESSAGE HANDLER
-    // ======================================================
+    // ------------------------------------------------------
     ws.on('message', (data) => {
       console.log("📩 WS MESSAGE RECEIVED:", data.toString());
 
@@ -128,68 +144,70 @@ wss.on('connection', (ws, req) => {
 
       const { type } = msg;
 
-      // ======================================================
-      // BODY CHAT: NEW MESSAGE
-      // ======================================================
+      // Determine chatType + chatId dynamically
+      const chatType = msg.body_chat_id ? "body" :
+                       msg.team_chat_id ? "team" :
+                       msg.foyer_chat_id ? "foyer" : null;
+
+      const chatId =
+        msg.body_chat_id ||
+        msg.team_chat_id ||
+        msg.foyer_chat_id;
+
+      if (!chatType || !chatId) {
+        console.log("❌ Missing chatType/chatId in message");
+        return;
+      }
+
+      const room = getRoomName(chatType, chatId);
+      const restBase = getRestBase(chatType);
+
+      // ------------------------------------------------------
+      // NEW MESSAGE
+      // ------------------------------------------------------
       if (type === "message:new") {
         console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
 
-        const room = `body_chat_${msg.body_chat_id}`;
-
-        fetch("https://dev.heartofhope777.site/wp-json/bodychat/v1/message", {
+        fetch(restBase, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            body_chat_id: msg.body_chat_id,
+            [`${chatType}_chat_id`]: chatId,
             user_id: meta.userId,
-            message: {
-              content: msg.message.content,
-              message_type: msg.message.message_type,
-              metadata: msg.message.metadata
-            }
+            message: msg.message
           })
         })
         .then(res => res.json())
         .then(saved => {
           console.log("💾 Saved NEW message:", saved);
 
-          // ⭐ Broadcast to the correct dynamic room
           broadcastToRoom(room, {
             type: "message:new",
             message: saved
           }, ws);
         })
         .catch(err => {
-          console.error("❌ Failed to save Body Chat message:", err);
+          console.error("❌ Failed to save message:", err);
         });
 
         return;
       }
 
-      // ======================================================
-      // BODY CHAT: UPDATE MESSAGE
-      // ======================================================
+      // ------------------------------------------------------
+      // UPDATE MESSAGE
+      // ------------------------------------------------------
       if (type === "message:update") {
         console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
-        const room = `body_chat_${msg.body_chat_id}`;
-
-        fetch(
-          "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
-          encodeURIComponent(msg.message_id),
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              content: msg.content
-            })
-          }
-        )
+        fetch(`${restBase}/${encodeURIComponent(msg.message_id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: msg.content })
+        })
         .then(res => res.json())
         .then(() => {
           console.log("💾 Updated message:", msg.message_id);
 
-          // ⭐ Broadcast to the correct dynamic room
           broadcastToRoom(room, {
             type: "message:update",
             message_id: msg.message_id,
@@ -197,40 +215,33 @@ wss.on('connection', (ws, req) => {
           });
         })
         .catch(err => {
-          console.error("❌ Failed to update Body Chat message:", err);
+          console.error("❌ Failed to update message:", err);
         });
 
         return;
       }
 
-      // ======================================================
-      // BODY CHAT: DELETE MESSAGE
-      // ======================================================
+      // ------------------------------------------------------
+      // DELETE MESSAGE
+      // ------------------------------------------------------
       if (type === "message:delete") {
         console.log(`🗑️ DELETE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
-        const room = `body_chat_${msg.body_chat_id}`;
-
-        fetch(
-          "https://dev.heartofhope777.site/wp-json/bodychat/v1/message/" +
-          encodeURIComponent(msg.message_id),
-          {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" }
-          }
-        )
+        fetch(`${restBase}/${encodeURIComponent(msg.message_id)}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" }
+        })
         .then(res => res.json())
         .then(() => {
           console.log("💾 Deleted message:", msg.message_id);
 
-          // ⭐ Broadcast to the correct dynamic room
           broadcastToRoom(room, {
             type: "message:delete",
             message_id: msg.message_id
           });
         })
         .catch(err => {
-          console.error("❌ Failed to delete Body Chat message:", err);
+          console.error("❌ Failed to delete message:", err);
         });
 
         return;
@@ -249,9 +260,9 @@ wss.on('connection', (ws, req) => {
   }
 });
 
-// ======================================================
+// ------------------------------------------------------
 // START SERVER
-// ======================================================
+// ------------------------------------------------------
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Heart of Hope WebSocket server listening on port ${PORT}`);
 });
