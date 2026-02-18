@@ -168,30 +168,14 @@ wss.on('connection', (ws, req) => {
       if (type === "message:new") {
         console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
 
-        fetch(restBase, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            [`${chatType}_chat_id`]: chatId,
-            user_id: meta.userId,
-            message: msg.message
-          })
-        })
-        .then(res => res.json())
-        .then(saved => {
-          console.log("💾 Saved NEW message:", saved);
-
-          broadcastToRoom(room, {
-            type: "message:new",
-            message: saved
-          }, ws);
-        })
-        .catch(err => {
-          console.error("❌ Failed to save message:", err);
-        });
-
+        // WS should ONLY broadcast, NOT save
+        broadcastToRoom(room, {
+          type: "message:new",
+          message: msg.message
+        }, ws);
+        
         return;
-      }
+        }
 
       // ------------------------------------------------------
       // UPDATE MESSAGE
