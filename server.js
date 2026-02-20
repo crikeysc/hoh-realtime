@@ -6,6 +6,8 @@ require('dotenv').config();
 const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
+const express = require('express');
+const app = express();
 
 // Node < 18 fallback
 if (typeof fetch === "undefined") {
@@ -21,7 +23,17 @@ const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
 const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
 
 const server = http.createServer();
+server.on('request', app); // <-- IMPORTANT
+
 const wss = new WebSocket.Server({ server });
+
+// ---------------------------------------------------------
+// ACTIVE CONNECTION COUNT ENDPOINT
+// ---------------------------------------------------------
+app.get('/connections', (req, res) => {
+  res.json({ connections: wss.clients.size });
+});
+
 
 // ------------------------------------------------------
 // Helpers
