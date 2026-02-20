@@ -19,21 +19,66 @@ if (typeof fetch === "undefined") {
 const PORT = process.env.PORT;
 const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
 
+// ------------------------------------------------------
 // In-memory presence
+// ------------------------------------------------------
 const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
 
+// ------------------------------------------------------
+// TELEMETRY STORAGE
+// ------------------------------------------------------
+let messageCount = 0;
+let messagesPerMinute = 0;
+
+const errorLog = [];        // last 100 errors
+const disconnectLog = [];   // last 100 disconnects
+const roomActivity = {};    // roomName -> message count
+
+// Reset throughput every minute
+setInterval(() => {
+  messagesPerMinute = messageCount;
+  messageCount = 0;
+}, 60 * 1000);
+
+function logError(type, details) {
+  errorLog.push({
+    type,
+    details,
+    time: new Date().toISOString()
+  });
+  if (errorLog.length > 100) errorLog.shift();
+}
+
+// ------------------------------------------------------
+// HTTP SERVER + EXPRESS
+// ------------------------------------------------------
 const server = http.createServer();
-server.on('request', app); // <-- IMPORTANT
+server.on('request', app);
 
 const wss = new WebSocket.Server({ server });
 
-// ---------------------------------------------------------
-// ACTIVE CONNECTION COUNT ENDPOINT
-// ---------------------------------------------------------
+// ------------------------------------------------------
+// TELEMETRY ENDPOINTS
+// ------------------------------------------------------
 app.get('/connections', (req, res) => {
   res.json({ connections: wss.clients.size });
 });
 
+app.get('/stats/messages', (req, res) => {
+  res.json({ perMinute: messagesPerMinute });
+});
+
+app.get('/stats/errors', (req, res) => {
+  res.json(errorLog);
+});
+
+app.get('/stats/disconnects', (req, res) => {
+  res.json(disconnectLog);
+});
+
+app.get('/stats/rooms', (req, res) => {
+  res.json(roomActivity);
+});
 
 // ------------------------------------------------------
 // Helpers
@@ -64,9 +109,6 @@ function broadcastToRoom(room, message, exceptWs = null) {
   }
 }
 
-// ------------------------------------------------------
-// Universal REST endpoint resolver
-// ------------------------------------------------------
 function getRestBase(chatType) {
   switch (chatType) {
     case "body":  return "https://dev.heartofhope777.site/wp-json/bodychat/v1/message";
@@ -76,9 +118,6 @@ function getRestBase(chatType) {
   }
 }
 
-// ------------------------------------------------------
-// Universal room resolver
-// ------------------------------------------------------
 function getRoomName(chatType, chatId) {
   return `${chatType}_chat_${chatId}`;
 }
@@ -146,17 +185,19 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (data) => {
       console.log("📩 WS MESSAGE RECEIVED:", data.toString());
 
+      messageCount++; // throughput counter
+
       let msg;
       try {
         msg = JSON.parse(data.toString());
       } catch {
         console.log("❌ Invalid JSON from client");
+        logError('invalid-json', data.toString());
         return;
       }
 
       const { type } = msg;
 
-      // Determine chatType + chatId dynamically
       const chatType = msg.body_chat_id ? "body" :
                        msg.team_chat_id ? "team" :
                        msg.foyer_chat_id ? "foyer" : null;
@@ -168,11 +209,15 @@ wss.on('connection', (ws, req) => {
 
       if (!chatType || !chatId) {
         console.log("❌ Missing chatType/chatId in message");
+        logError('missing-chatType', JSON.stringify(msg));
         return;
       }
 
       const room = getRoomName(chatType, chatId);
       const restBase = getRestBase(chatType);
+
+      // Track room activity
+      roomActivity[room] = (roomActivity[room] || 0) + 1;
 
       // ------------------------------------------------------
       // NEW MESSAGE
@@ -180,14 +225,13 @@ wss.on('connection', (ws, req) => {
       if (type === "message:new") {
         console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
 
-        // WS should ONLY broadcast, NOT save
         broadcastToRoom(room, {
           type: "message:new",
           message: msg.message
         }, ws);
-        
+
         return;
-        }
+      }
 
       // ------------------------------------------------------
       // UPDATE MESSAGE
@@ -212,6 +256,7 @@ wss.on('connection', (ws, req) => {
         })
         .catch(err => {
           console.error("❌ Failed to update message:", err);
+          logError('update-failed', err.message);
         });
 
         return;
@@ -238,6 +283,7 @@ wss.on('connection', (ws, req) => {
         })
         .catch(err => {
           console.error("❌ Failed to delete message:", err);
+          logError('delete-failed', err.message);
         });
 
         return;
@@ -245,13 +291,29 @@ wss.on('connection', (ws, req) => {
 
     }); // ws.on('message')
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       console.log(`🔌 WS CLOSED for user ${meta.userId}`);
+
+      disconnectLog.push({
+        userId: meta.userId,
+        code,
+        reason: reason.toString(),
+        time: new Date().toISOString()
+      });
+
+      if (disconnectLog.length > 100) disconnectLog.shift();
+
       clients.delete(ws);
+    });
+
+    ws.on('error', (err) => {
+      console.error("❌ WS ERROR:", err);
+      logError('ws-error', err.message);
     });
 
   } catch (err) {
     console.error("❌ Connection error:", err);
+    logError('connection-error', err.message);
     ws.close();
   }
 });
