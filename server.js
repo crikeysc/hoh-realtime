@@ -9,15 +9,22 @@ const jwt = require('jsonwebtoken');
 const express = require('express');
 const app = express();
 
-// Node < 18 fallback
+// Node < 18 fallback for fetch
 if (typeof fetch === "undefined") {
   global.fetch = (...args) =>
     import('node-fetch').then(mod => mod.default(...args));
 }
 
-// ENV
-const PORT = process.env.PORT;
+// ----------------------
+// ENV (robust for Render)
+// ----------------------
+const PORT = process.env.PORT || 10000;
 const JWT_SECRET = process.env.HOH_JWT_SECRET || 'change-me-in-production';
+
+console.log('HOH WS server starting with config:', {
+  port: PORT,
+  jwtSecretSet: !!process.env.HOH_JWT_SECRET
+});
 
 // ------------------------------------------------------
 // In-memory presence
@@ -85,6 +92,7 @@ app.get('/stats/rooms', (req, res) => {
 // ------------------------------------------------------
 function parseQuery(url) {
   const out = {};
+  if (!url) return out;
   const qIndex = url.indexOf('?');
   if (qIndex === -1) return out;
   const query = url.slice(qIndex + 1);
@@ -105,15 +113,21 @@ function broadcastToRoom(room, message, exceptWs = null) {
     if (ws === exceptWs) continue;
 
     console.log(`   ↳ Sent to user ${meta.userId}`);
-    ws.send(JSON.stringify(message));
+    try {
+      ws.send(JSON.stringify(message));
+    } catch (err) {
+      console.error('❌ Failed to send to ws', err);
+    }
   }
 }
 
+// Use the actual WP REST namespace your site exposes (hoh/v1)
 function getRestBase(chatType) {
+  // returns base URL for message operations (no trailing slash)
   switch (chatType) {
-    case "body":  return "https://dev.heartofhope777.site/wp-json/bodychat/v1/message";
-    case "team":  return "https://dev.heartofhope777.site/wp-json/teamchat/v1/message";
-    case "foyer": return "https://dev.heartofhope777.site/wp-json/foyerchat/v1/message";
+    case "body":  return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
+    case "team":  return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
+    case "foyer": return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
     default:      return null;
   }
 }
@@ -130,11 +144,17 @@ wss.on('connection', (ws, req) => {
 
   try {
     const query = parseQuery(req.url || '');
-    const token = query.token;
+
+    // Accept token from query string OR Authorization header (Bearer)
+    let token = query.token || null;
+    if (!token && req.headers && req.headers.authorization) {
+      const m = req.headers.authorization.match(/^Bearer\s+(.+)$/i);
+      if (m) token = m[1];
+    }
 
     if (!token) {
       console.log("❌ Missing token — closing connection");
-      ws.close(4001, 'Missing token');
+      try { ws.close(4001, 'Missing token'); } catch(e){/*ignore*/ }
       return;
     }
 
@@ -144,12 +164,12 @@ wss.on('connection', (ws, req) => {
       console.log("🔑 Token verified:", payload);
     } catch (err) {
       console.log("❌ Invalid token:", err.message);
-      ws.close(4002, 'Invalid token');
+      try { ws.close(4002, 'Invalid token'); } catch(e){/*ignore*/ }
       return;
     }
 
     const userId = payload.sub || payload.user_id;
-    const name = payload.name || 'Guest';
+    const name = payload.name || payload.username || 'Guest';
 
     const meta = {
       userId,
@@ -172,12 +192,17 @@ wss.on('connection', (ws, req) => {
       });
     }
 
-    ws.send(JSON.stringify({
-      type: 'connected',
-      userId,
-      name,
-      rooms: Array.from(meta.rooms)
-    }));
+    // Send initial connected event
+    try {
+      ws.send(JSON.stringify({
+        type: 'connected',
+        userId,
+        name,
+        rooms: Array.from(meta.rooms)
+      }));
+    } catch (err) {
+      console.error('❌ Failed to send connected message', err);
+    }
 
     // ------------------------------------------------------
     // MESSAGE HANDLER
@@ -220,7 +245,7 @@ wss.on('connection', (ws, req) => {
       roomActivity[room] = (roomActivity[room] || 0) + 1;
 
       // ------------------------------------------------------
-      // NEW MESSAGE
+      // NEW MESSAGE (broadcast to room)
       // ------------------------------------------------------
       if (type === "message:new") {
         console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
@@ -234,17 +259,23 @@ wss.on('connection', (ws, req) => {
       }
 
       // ------------------------------------------------------
-      // UPDATE MESSAGE
+      // UPDATE MESSAGE (persist via REST then broadcast)
       // ------------------------------------------------------
       if (type === "message:update") {
         console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
+
+        if (!restBase) {
+          console.error('❌ No restBase for chatType', chatType);
+          logError('no-rest-base', chatType);
+          return;
+        }
 
         fetch(`${restBase}/${encodeURIComponent(msg.message_id)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: msg.content })
         })
-        .then(res => res.json())
+        .then(res => res.json().catch(() => ({})))
         .then(() => {
           console.log("💾 Updated message:", msg.message_id);
 
@@ -256,23 +287,29 @@ wss.on('connection', (ws, req) => {
         })
         .catch(err => {
           console.error("❌ Failed to update message:", err);
-          logError('update-failed', err.message);
+          logError('update-failed', err.message || String(err));
         });
 
         return;
       }
 
       // ------------------------------------------------------
-      // DELETE MESSAGE
+      // DELETE MESSAGE (persist via REST then broadcast)
       // ------------------------------------------------------
       if (type === "message:delete") {
         console.log(`🗑️ DELETE MESSAGE ${msg.message_id} from user ${meta.userId}`);
+
+        if (!restBase) {
+          console.error('❌ No restBase for chatType', chatType);
+          logError('no-rest-base', chatType);
+          return;
+        }
 
         fetch(`${restBase}/${encodeURIComponent(msg.message_id)}`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" }
         })
-        .then(res => res.json())
+        .then(res => res.json().catch(() => ({})))
         .then(() => {
           console.log("💾 Deleted message:", msg.message_id);
 
@@ -283,12 +320,15 @@ wss.on('connection', (ws, req) => {
         })
         .catch(err => {
           console.error("❌ Failed to delete message:", err);
-          logError('delete-failed', err.message);
+          logError('delete-failed', err.message || String(err));
         });
 
         return;
       }
 
+      // Unknown message type
+      console.log("⚠️ Unknown message type:", type);
+      logError('unknown-type', JSON.stringify(msg));
     }); // ws.on('message')
 
     ws.on('close', (code, reason) => {
@@ -297,7 +337,7 @@ wss.on('connection', (ws, req) => {
       disconnectLog.push({
         userId: meta.userId,
         code,
-        reason: reason.toString(),
+        reason: reason ? reason.toString() : '',
         time: new Date().toISOString()
       });
 
@@ -308,13 +348,13 @@ wss.on('connection', (ws, req) => {
 
     ws.on('error', (err) => {
       console.error("❌ WS ERROR:", err);
-      logError('ws-error', err.message);
+      logError('ws-error', err.message || String(err));
     });
 
   } catch (err) {
     console.error("❌ Connection error:", err);
-    logError('connection-error', err.message);
-    ws.close();
+    logError('connection-error', err.message || String(err));
+    try { ws.close(); } catch(e){/*ignore*/ }
   }
 });
 
