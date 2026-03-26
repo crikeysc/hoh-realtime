@@ -121,13 +121,15 @@ function broadcastToRoom(room, message, exceptWs = null) {
   }
 }
 
-// Use the actual WP REST namespace your site exposes (hoh/v1)
+// ------------------------------------------------------
+// REST base mapping (Option 1): use existing WP namespaces
+// ------------------------------------------------------
 function getRestBase(chatType) {
-  // returns base URL for message operations (no trailing slash)
+  // Use the actual REST namespaces and singular message path
   switch (chatType) {
-    case "body":  return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
-    case "team":  return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
-    case "foyer": return "https://dev.heartofhope777.site/wp-json/hoh/v1/messages";
+    case "body":  return "https://dev.heartofhope777.site/wp-json/bodychat/v1/message";
+    case "team":  return "https://dev.heartofhope777.site/wp-json/teamchat/v1/message";
+    case "foyer": return "https://dev.heartofhope777.site/wp-json/foyerchat/v1/message";
     default:      return null;
   }
 }
