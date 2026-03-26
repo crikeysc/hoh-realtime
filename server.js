@@ -27,6 +27,16 @@ console.log('HOH WS server starting with config:', {
 });
 
 // ------------------------------------------------------
+// Crash handlers (diagnostic)
+// ------------------------------------------------------
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION', reason && reason.stack ? reason.stack : reason);
+});
+
+// ------------------------------------------------------
 // In-memory presence
 // ------------------------------------------------------
 const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
@@ -144,14 +154,46 @@ function getRoomName(chatType, chatId) {
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
+  // Diagnostic logging (temporary)
+  try {
+    console.log('--- WS CONNECT DIAGNOSTICS ---');
+    console.log('req.url:', req.url);
+    console.log('req.headers.host:', req.headers && req.headers.host);
+    console.log('req.headers.origin:', req.headers && req.headers.origin);
+    console.log('req.headers.authorization:', req.headers && req.headers.authorization ? '[present]' : '[none]');
+    console.log('req.headers["sec-websocket-protocol"]:', req.headers && req.headers['sec-websocket-protocol']);
+    console.log('-------------------------------');
+  } catch (e) {
+    console.error('WS diagnostic logging failed', e && e.stack ? e.stack : e);
+  }
+
   try {
     const query = parseQuery(req.url || '');
 
-    // Accept token from query string OR Authorization header (Bearer)
-    let token = query.token || null;
-    if (!token && req.headers && req.headers.authorization) {
-      const m = req.headers.authorization.match(/^Bearer\s+(.+)$/i);
-      if (m) token = m[1];
+    // Accept token from query string OR Authorization header (Bearer) OR sec-websocket-protocol
+    let token = null;
+    try {
+      token = query.token || null;
+
+      if (!token && req.headers && req.headers.authorization) {
+        const m = req.headers.authorization.match(/^Bearer\s+(.+)$/i);
+        if (m) token = m[1];
+      }
+
+      if (!token && req.headers && req.headers['sec-websocket-protocol']) {
+        const proto = req.headers['sec-websocket-protocol'];
+        const m1 = proto.match(/Bearer\s+(.+)/i);
+        const m2 = proto.match(/Bearer,(.+)/i);
+        if (m1) token = m1[1];
+        else if (m2) token = m2[1];
+        else token = proto;
+      }
+
+      const masked = token ? (token.length > 10 ? token.slice(0,6) + '…' + token.slice(-4) : '[short]') : '[none]';
+      console.log('WS token received (masked):', masked);
+    } catch (e) {
+      console.error('Token extraction error', e && e.stack ? e.stack : e);
+      token = null;
     }
 
     if (!token) {
