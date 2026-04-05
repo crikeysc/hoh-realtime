@@ -369,7 +369,23 @@ wss.on('connection', (ws, req) => {
 
         return;
       }
-
+      // ------------------------------------------------------
+      // JOIN ROOM
+      // ------------------------------------------------------
+      if (type === "join") {
+          console.log(`📌 User ${meta.userId} joining room: ${room}`);
+      
+          meta.rooms.add(room);
+      
+          // Optionally notify client
+          ws.send(JSON.stringify({
+              type: "joined",
+              room
+          }));
+      
+          return;
+      }
+            
       // Unknown message type
       console.log("⚠️ Unknown message type:", type);
       logError('unknown-type', JSON.stringify(msg));
