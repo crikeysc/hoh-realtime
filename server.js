@@ -132,10 +132,9 @@ function broadcastToRoom(room, message, exceptWs = null) {
 }
 
 // ------------------------------------------------------
-// REST base mapping (Option 1): use existing WP namespaces
+// REST base mapping
 // ------------------------------------------------------
 function getRestBase(chatType) {
-  // Use the actual REST namespaces and singular message path
   switch (chatType) {
     case "body":  return "https://dev.heartofhope777.site/wp-json/bodychat/v1/message";
     case "team":  return "https://dev.heartofhope777.site/wp-json/teamchat/v1/message";
@@ -154,23 +153,10 @@ function getRoomName(chatType, chatId) {
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
-  // Diagnostic logging (temporary)
-  try {
-    console.log('--- WS CONNECT DIAGNOSTICS ---');
-    console.log('req.url:', req.url);
-    console.log('req.headers.host:', req.headers && req.headers.host);
-    console.log('req.headers.origin:', req.headers && req.headers.origin);
-    console.log('req.headers.authorization:', req.headers && req.headers.authorization ? '[present]' : '[none]');
-    console.log('req.headers["sec-websocket-protocol"]:', req.headers && req.headers['sec-websocket-protocol']);
-    console.log('-------------------------------');
-  } catch (e) {
-    console.error('WS diagnostic logging failed', e && e.stack ? e.stack : e);
-  }
-
   try {
     const query = parseQuery(req.url || '');
 
-    // Accept token from query string OR Authorization header (Bearer) OR sec-websocket-protocol
+    // Accept token from query string OR Authorization header OR sec-websocket-protocol
     let token = null;
     try {
       token = query.token || null;
@@ -189,26 +175,20 @@ wss.on('connection', (ws, req) => {
         else token = proto;
       }
 
-      const masked = token ? (token.length > 10 ? token.slice(0,6) + '…' + token.slice(-4) : '[short]') : '[none]';
-      console.log('WS token received (masked):', masked);
     } catch (e) {
-      console.error('Token extraction error', e && e.stack ? e.stack : e);
       token = null;
     }
 
     if (!token) {
-      console.log("❌ Missing token — closing connection");
-      try { ws.close(4001, 'Missing token'); } catch(e){/*ignore*/ }
+      try { ws.close(4001, 'Missing token'); } catch(e){}
       return;
     }
 
     let payload;
     try {
       payload = jwt.verify(token, JWT_SECRET);
-      console.log("🔑 Token verified:", payload);
     } catch (err) {
-      console.log("❌ Invalid token:", err.message);
-      try { ws.close(4002, 'Invalid token'); } catch(e){/*ignore*/ }
+      try { ws.close(4002, 'Invalid token'); } catch(e){}
       return;
     }
 
@@ -223,44 +203,32 @@ wss.on('connection', (ws, req) => {
 
     clients.set(ws, meta);
 
-    console.log(`👤 User connected: ${userId} (${name})`);
-
     // Dynamic room join
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
-        if (room) {
-          meta.rooms.add(room);
-          console.log(`📌 User ${userId} joined room: ${room}`);
-        }
+        if (room) meta.rooms.add(room);
       });
     }
 
-    // Send initial connected event
-    try {
-      ws.send(JSON.stringify({
-        type: 'connected',
-        userId,
-        name,
-        rooms: Array.from(meta.rooms)
-      }));
-    } catch (err) {
-      console.error('❌ Failed to send connected message', err);
-    }
+    // Initial connected event
+    ws.send(JSON.stringify({
+      type: 'connected',
+      userId,
+      name,
+      rooms: Array.from(meta.rooms)
+    }));
 
     // ------------------------------------------------------
     // MESSAGE HANDLER
     // ------------------------------------------------------
     ws.on('message', (data) => {
-      console.log("📩 WS MESSAGE RECEIVED:", data.toString());
-
-      messageCount++; // throughput counter
+      messageCount++;
 
       let msg;
       try {
         msg = JSON.parse(data.toString());
       } catch {
-        console.log("❌ Invalid JSON from client");
         logError('invalid-json', data.toString());
         return;
       }
@@ -277,7 +245,6 @@ wss.on('connection', (ws, req) => {
         msg.foyer_chat_id;
 
       if (!chatType || !chatId) {
-        console.log("❌ Missing chatType/chatId in message");
         logError('missing-chatType', JSON.stringify(msg));
         return;
       }
@@ -285,31 +252,31 @@ wss.on('connection', (ws, req) => {
       const room = getRoomName(chatType, chatId);
       const restBase = getRestBase(chatType);
 
-      // Track room activity
       roomActivity[room] = (roomActivity[room] || 0) + 1;
 
       // ------------------------------------------------------
-      // NEW MESSAGE (broadcast to room)
+      // NEW MESSAGE (broadcast)
       // ------------------------------------------------------
       if (type === "message:new") {
-        console.log(`📝 NEW MESSAGE from user ${meta.userId}:`, msg);
+
+        const now = new Date().toISOString();
 
         broadcastToRoom(room, {
           type: "message:new",
-          message: msg.message
+          message: msg.message,
+          created_at: now,
+          updated_at: now
         }, ws);
 
         return;
       }
 
       // ------------------------------------------------------
-      // UPDATE MESSAGE (persist via REST then broadcast)
+      // UPDATE MESSAGE
       // ------------------------------------------------------
       if (type === "message:update") {
-        console.log(`✏️ UPDATE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
         if (!restBase) {
-          console.error('❌ No restBase for chatType', chatType);
           logError('no-rest-base', chatType);
           return;
         }
@@ -319,18 +286,15 @@ wss.on('connection', (ws, req) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: msg.content })
         })
-        .then(res => res.json().catch(() => ({})))
         .then(() => {
-          console.log("💾 Updated message:", msg.message_id);
-
           broadcastToRoom(room, {
             type: "message:update",
             message_id: msg.message_id,
-            content: msg.content
+            content: msg.content,
+            updated_at: new Date().toISOString()
           });
         })
         .catch(err => {
-          console.error("❌ Failed to update message:", err);
           logError('update-failed', err.message || String(err));
         });
 
@@ -338,13 +302,11 @@ wss.on('connection', (ws, req) => {
       }
 
       // ------------------------------------------------------
-      // DELETE MESSAGE (persist via REST then broadcast)
+      // DELETE MESSAGE
       // ------------------------------------------------------
       if (type === "message:delete") {
-        console.log(`🗑️ DELETE MESSAGE ${msg.message_id} from user ${meta.userId}`);
 
         if (!restBase) {
-          console.error('❌ No restBase for chatType', chatType);
           logError('no-rest-base', chatType);
           return;
         }
@@ -353,47 +315,36 @@ wss.on('connection', (ws, req) => {
           method: "DELETE",
           headers: { "Content-Type": "application/json" }
         })
-        .then(res => res.json().catch(() => ({})))
         .then(() => {
-          console.log("💾 Deleted message:", msg.message_id);
-
           broadcastToRoom(room, {
             type: "message:delete",
-            message_id: msg.message_id
+            message_id: msg.message_id,
+            deleted_at: new Date().toISOString()
           });
         })
         .catch(err => {
-          console.error("❌ Failed to delete message:", err);
           logError('delete-failed', err.message || String(err));
         });
 
         return;
       }
+
       // ------------------------------------------------------
       // JOIN ROOM
       // ------------------------------------------------------
       if (type === "join") {
-          console.log(`📌 User ${meta.userId} joining room: ${room}`);
-      
-          meta.rooms.add(room);
-      
-          // Optionally notify client
-          ws.send(JSON.stringify({
-              type: "joined",
-              room
-          }));
-      
-          return;
+        meta.rooms.add(room);
+        ws.send(JSON.stringify({
+          type: "joined",
+          room
+        }));
+        return;
       }
-            
-      // Unknown message type
-      console.log("⚠️ Unknown message type:", type);
+
       logError('unknown-type', JSON.stringify(msg));
-    }); // ws.on('message')
+    });
 
     ws.on('close', (code, reason) => {
-      console.log(`🔌 WS CLOSED for user ${meta.userId}`);
-
       disconnectLog.push({
         userId: meta.userId,
         code,
@@ -407,14 +358,12 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('error', (err) => {
-      console.error("❌ WS ERROR:", err);
       logError('ws-error', err.message || String(err));
     });
 
   } catch (err) {
-    console.error("❌ Connection error:", err);
     logError('connection-error', err.message || String(err));
-    try { ws.close(); } catch(e){/*ignore*/ }
+    try { ws.close(); } catch(e){}
   }
 });
 
