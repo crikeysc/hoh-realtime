@@ -333,11 +333,21 @@ wss.on('connection', (ws, req) => {
       // JOIN ROOM
       // ------------------------------------------------------
       if (type === "join") {
+        const { chatType, chatId } = msg;
+      
+        if (!chatType || !chatId) {
+          logError('join-missing-fields', JSON.stringify(msg));
+          return;
+        }
+      
+        const room = `${chatType}_${chatId}`;
         meta.rooms.add(room);
+      
         ws.send(JSON.stringify({
           type: "joined",
           room
         }));
+      
         return;
       }
 
