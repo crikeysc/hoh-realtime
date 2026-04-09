@@ -275,31 +275,42 @@ wss.on('connection', (ws, req) => {
       // UPDATE MESSAGE
       // ------------------------------------------------------
       if (type === "message:update") {
-
+      
+        const { message } = msg;
+      
+        if (!message || !message.id) {
+          logError('update-missing-fields', JSON.stringify(msg));
+          return;
+        }
+      
+        const messageId = message.id;
+        const content = message.content;
+      
         if (!restBase) {
           logError('no-rest-base', chatType);
           return;
         }
-
-        fetch(`${restBase}/${encodeURIComponent(msg.message_id)}`, {
+      
+        fetch(`${restBase}/${encodeURIComponent(messageId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: msg.content })
+          body: JSON.stringify({ content })
         })
         .then(() => {
           broadcastToRoom(room, {
             type: "message:update",
-            message_id: msg.message_id,
-            content: msg.content,
+            message_id: messageId,
+            content,
             updated_at: new Date().toISOString()
           });
         })
         .catch(err => {
           logError('update-failed', err.message || String(err));
         });
-
+      
         return;
       }
+
 
       // ------------------------------------------------------
       // DELETE MESSAGE
