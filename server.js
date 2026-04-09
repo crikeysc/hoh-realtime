@@ -1,4 +1,4 @@
-// hoh-ws-server.js
+// server.js
 // Heart of Hope – Universal WebSocket Engine (Body, Team, Foyer)
 
 require('dotenv').config();
@@ -341,6 +341,7 @@ wss.on('connection', (ws, req) => {
       // ------------------------------------------------------
       // JOIN ROOM
       // ------------------------------------------------------
+      // JOIN ROOM
       if (type === "join") {
         const { chatType, chatId } = msg;
       
@@ -349,16 +350,17 @@ wss.on('connection', (ws, req) => {
           return;
         }
       
-        const joinroom = `${chatType}_${chatId}`;
-        meta.rooms.add(room);
+        const joinRoom = getRoomName(chatType, chatId);
+        meta.rooms.add(joinRoom);
       
         ws.send(JSON.stringify({
           type: "joined",
-          room
+          room: joinRoom
         }));
       
         return;
       }
+
 
 
       logError('unknown-type', JSON.stringify(msg));
