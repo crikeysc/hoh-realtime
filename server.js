@@ -349,7 +349,7 @@ wss.on('connection', (ws, req) => {
           return;
         }
       
-        const room = `${chatType}_${chatId}`;
+        const joinroom = `${chatType}_${chatId}`;
         meta.rooms.add(room);
       
         ws.send(JSON.stringify({
