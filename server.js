@@ -235,19 +235,17 @@ wss.on('connection', (ws, req) => {
 
       const { type } = msg;
 
-      const chatType = msg.body_chat_id ? "body" :
-                       msg.team_chat_id ? "team" :
-                       msg.foyer_chat_id ? "foyer" : null;
-
-      const chatId =
-        msg.body_chat_id ||
-        msg.team_chat_id ||
-        msg.foyer_chat_id;
-
+      // NEW unified schema
+      const chatType = msg.chatType;
+      const chatId = msg.chatId;
+      
       if (!chatType || !chatId) {
         logError('missing-chatType', JSON.stringify(msg));
         return;
       }
+      
+      const room = getRoomName(chatType, chatId);
+      const restBase = getRestBase(chatType);
 
       const room = getRoomName(chatType, chatId);
       const restBase = getRestBase(chatType);
