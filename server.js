@@ -351,6 +351,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+
       logError('unknown-type', JSON.stringify(msg));
     });
 
