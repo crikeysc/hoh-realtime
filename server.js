@@ -238,14 +238,11 @@ wss.on('connection', (ws, req) => {
       // NEW unified schema
       const chatType = msg.chatType;
       const chatId = msg.chatId;
-      
+
       if (!chatType || !chatId) {
         logError('missing-chatType', JSON.stringify(msg));
         return;
       }
-      
-      const room = getRoomName(chatType, chatId);
-      const restBase = getRestBase(chatType);
 
       const room = getRoomName(chatType, chatId);
       const restBase = getRestBase(chatType);
@@ -273,22 +270,22 @@ wss.on('connection', (ws, req) => {
       // UPDATE MESSAGE
       // ------------------------------------------------------
       if (type === "message:update") {
-      
+
         const { message } = msg;
-      
+
         if (!message || !message.id) {
           logError('update-missing-fields', JSON.stringify(msg));
           return;
         }
-      
+
         const messageId = message.id;
         const content = message.content;
-      
+
         if (!restBase) {
           logError('no-rest-base', chatType);
           return;
         }
-      
+
         fetch(`${restBase}/${encodeURIComponent(messageId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -305,10 +302,9 @@ wss.on('connection', (ws, req) => {
         .catch(err => {
           logError('update-failed', err.message || String(err));
         });
-      
+
         return;
       }
-
 
       // ------------------------------------------------------
       // DELETE MESSAGE
@@ -341,27 +337,24 @@ wss.on('connection', (ws, req) => {
       // ------------------------------------------------------
       // JOIN ROOM
       // ------------------------------------------------------
-      // JOIN ROOM
       if (type === "join") {
         const { chatType, chatId } = msg;
-      
+
         if (!chatType || !chatId) {
           logError('join-missing-fields', JSON.stringify(msg));
           return;
         }
-      
+
         const joinRoom = getRoomName(chatType, chatId);
         meta.rooms.add(joinRoom);
-      
+
         ws.send(JSON.stringify({
           type: "joined",
           room: joinRoom
         }));
-      
+
         return;
       }
-
-
 
       logError('unknown-type', JSON.stringify(msg));
     });
