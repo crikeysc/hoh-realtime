@@ -252,6 +252,47 @@ wss.on('connection', (ws, req) => {
       // ------------------------------------------------------
       // NEW MESSAGE (broadcast)
       // ------------------------------------------------------
+      if (type === "attachment") {
+          if (!restBase) {
+              logError('no-rest-base', chatType);
+              return;
+          }
+      
+          const now = new Date().toISOString();
+      
+          const payload = {
+              type: "attachment",
+              content: msg.content,     // URL of uploaded file
+              fileName: msg.fileName,   // optional
+              mime: msg.mime,           // optional
+              user_id: meta.userId,
+              body_chat_id: chatId
+          };
+      
+          fetch(restBase, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+          })
+          .then(res => res.json())
+          .then(saved => {
+              broadcastToRoom(room, {
+                  type: "attachment",
+                  id: saved.id,
+                  content: saved.content,
+                  fileName: saved.fileName,
+                  mime: saved.mime,
+                  created_at: saved.created_at,
+                  updated_at: saved.updated_at
+              });
+          })
+          .catch(err => {
+              logError('attachment-failed', err.message || String(err));
+          });
+      
+          return;
+      }
+      
       if (type === "message:new") {
 
         const now = new Date().toISOString();
