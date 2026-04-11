@@ -337,10 +337,13 @@ wss.on('connection', (ws, req) => {
         .then(() => {
           broadcastToRoom(room, {
             type: "message:update",
-            message_id: messageId,
-            content,
-            updated_at: new Date().toISOString()
+            message: {
+              id: messageId,
+              content,
+              updated_at: new Date().toISOString()
+            }
           });
+
         })
         .catch(err => {
           logError('update-failed', err.message || String(err));
@@ -366,9 +369,11 @@ wss.on('connection', (ws, req) => {
         .then(() => {
           broadcastToRoom(room, {
             type: "message:delete",
-            message_id: msg.message_id,
-            deleted_at: new Date().toISOString()
+            message: {
+              id: msg.message_id
+            }
           });
+
         })
         .catch(err => {
           logError('delete-failed', err.message || String(err));
