@@ -277,13 +277,15 @@ wss.on('connection', (ws, req) => {
           .then(res => res.json())
           .then(saved => {
               broadcastToRoom(room, {
-                  type: "attachment",
+                type: "attachment",
+                message: {
                   id: saved.id,
                   content: saved.content,
                   fileName: saved.fileName,
                   mime: saved.mime,
                   created_at: saved.created_at,
                   updated_at: saved.updated_at
+                }
               });
           })
           .catch(err => {
