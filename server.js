@@ -296,18 +296,37 @@ wss.on('connection', (ws, req) => {
       }
       
       if (type === "message:new") {
-
-        const now = new Date().toISOString();
-
-        broadcastToRoom(room, {
-          type: "message:new",
-          message: msg.message,
-          created_at: now,
-          updated_at: now
-        }, ws);
-
-        return;
+          if (!restBase) {
+              logError('no-rest-base', chatType);
+              return;
+          }
+      
+          const payload = {
+              content: msg.message,
+              author_id: meta.userId,
+              author_name: meta.name,
+              body_chat_id: chatId
+          };
+      
+          fetch(restBase, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+          })
+          .then(res => res.json())
+          .then(saved => {
+              broadcastToRoom(room, {
+                  type: "message:new",
+                  message: saved
+              });
+          })
+          .catch(err => {
+              logError('message-new-failed', err.message || String(err));
+          });
+      
+          return;
       }
+
 
       // ------------------------------------------------------
       // UPDATE MESSAGE
