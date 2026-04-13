@@ -149,6 +149,13 @@ function getRestUrl(chatType) {
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
+  ws.on('message', (data) => {
+  console.log('📩 RAW WS MESSAGE:', data.toString());
+  messageCount++;
+  ...
+});
+
+
   try {
     const query = parseQuery(req.url || '');
 
