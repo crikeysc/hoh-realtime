@@ -149,12 +149,13 @@ function getRestUrl(chatType) {
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
+  // ⭐ MUST be inside the connection handler
   ws.on('message', (data) => {
-  console.log('📩 RAW WS MESSAGE:', data.toString());
-  messageCount++;
-  ...
-});
+    console.log('📩 RAW WS MESSAGE:', data.toString());
+    messageCount++;
 
+    // ... your message handling logic goes here ...
+  });
 
   try {
     const query = parseQuery(req.url || '');
@@ -221,6 +222,13 @@ wss.on('connection', (ws, req) => {
       name,
       rooms: Array.from(meta.rooms)
     }));
+
+  } catch (err) {
+    console.error("❌ Connection error:", err);
+    try { ws.close(); } catch(e){}
+  }
+});
+
 
     // ------------------------------------------------------
     // MESSAGE HANDLER
