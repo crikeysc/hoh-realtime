@@ -47,9 +47,9 @@ const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
 let messageCount = 0;
 let messagesPerMinute = 0;
 
-const errorLog = [];        // last 100 errors
-const disconnectLog = [];   // last 100 disconnects
-const roomActivity = {};    // roomName -> message count
+const errorLog = [];
+const disconnectLog = [];
+const roomActivity = {};
 
 setInterval(() => {
   messagesPerMinute = messageCount;
@@ -139,7 +139,6 @@ const HOH_REST_BASE = "https://dev.heartofhope777.site/wp-json/hoh/v1";
 
 // Build REST URL for a given chatType (room)
 function getRestUrl(chatType) {
-  // chatType is "body" | "team" | "foyer"
   return `${HOH_REST_BASE}/message?room=${encodeURIComponent(chatType)}`;
 }
 
@@ -149,18 +148,12 @@ function getRestUrl(chatType) {
 wss.on('connection', (ws, req) => {
   console.log("🔌 New WS connection:", req.url);
 
-  // ⭐ MUST be inside the connection handler
-  ws.on('message', (data) => {
-    console.log('📩 RAW WS MESSAGE:', data.toString());
-    messageCount++;
-
-    // ... your message handling logic goes here ...
-  });
-
+  // ------------------------------------------------------
+  // AUTH + ROOM SETUP
+  // ------------------------------------------------------
   try {
     const query = parseQuery(req.url || '');
 
-    // Accept token from query string OR Authorization header OR sec-websocket-protocol
     let token = null;
     try {
       token = query.token || null;
@@ -199,282 +192,262 @@ wss.on('connection', (ws, req) => {
     const userId = payload.sub || payload.user_id;
     const name = payload.name || payload.username || 'Guest';
 
-    const meta = {
+    ws.meta = {
       userId,
       name,
       rooms: new Set()
     };
 
-    clients.set(ws, meta);
+    clients.set(ws, ws.meta);
 
-    // Dynamic room join from query
     if (query.rooms) {
       query.rooms.split(',').forEach(r => {
         const room = r.trim();
-        if (room) meta.rooms.add(room);
+        if (room) ws.meta.rooms.add(room);
       });
     }
 
-    // Initial connected event
     ws.send(JSON.stringify({
       type: 'connected',
       userId,
       name,
-      rooms: Array.from(meta.rooms)
+      rooms: Array.from(ws.meta.rooms)
     }));
-
-  } catch (err) {
-    console.error("❌ Connection error:", err);
-    try { ws.close(); } catch(e){}
-  }
-});
-
-
-    // ------------------------------------------------------
-    // MESSAGE HANDLER
-    // ------------------------------------------------------
-    ws.on('message', (data) => {
-      messageCount++;
-
-      let msg;
-      try {
-        msg = JSON.parse(data.toString());
-      } catch {
-        logError('invalid-json', data.toString());
-        return;
-      }
-
-      const { type } = msg;
-
-      // Unified schema
-      const chatType = msg.chatType; // "body" | "team" | "foyer"
-      const chatId   = msg.chatId;
-
-      if (!chatType || !chatId) {
-        logError('missing-chatType', JSON.stringify(msg));
-        return;
-      }
-
-      const room    = getRoomName(chatType, chatId);
-      const restUrl = getRestUrl(chatType);
-
-      roomActivity[room] = (roomActivity[room] || 0) + 1;
-
-      // ------------------------------------------------------
-      // ATTACHMENT
-      // ------------------------------------------------------
-      if (type === "attachment") {
-        const now = new Date().toISOString();
-
-        const payload = {
-          type: "attachment",
-          content: msg.content,     // URL of uploaded file
-          fileName: msg.fileName,   // optional
-          mime: msg.mime,           // optional
-          user_id: meta.userId,
-          body_chat_id: chatId,
-          created_at: now
-        };
-
-        fetch(restUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            logError('attachment-rest-failed', `status=${res.status} body=${text}`);
-            return;
-          }
-          return res.json();
-        })
-        .then(saved => {
-          if (!saved) return;
-
-          broadcastToRoom(room, {
-            type: "attachment",
-            message: {
-              id: saved.id,
-              content: saved.content,
-              fileName: saved.fileName,
-              mime: saved.mime,
-              created_at: saved.created_at,
-              updated_at: saved.updated_at
-            }
-          });
-        })
-        .catch(err => {
-          logError('attachment-failed', err.message || String(err));
-        });
-
-        return;
-      }
-
-      // ------------------------------------------------------
-      // NEW MESSAGE
-      // ------------------------------------------------------
-      if (type === "message:new") {
-        const payload = {
-          type: "message",
-          content: msg.message,
-          author_id: meta.userId,
-          author_name: meta.name,
-          body_chat_id: chatId
-        };
-
-        fetch(restUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            logError('message-new-rest-failed', `status=${res.status} body=${text}`);
-            return;
-          }
-          return res.json();
-        })
-        .then(saved => {
-          if (!saved) return;
-
-          broadcastToRoom(room, {
-            type: "message:new",
-            message: saved
-          });
-        })
-        .catch(err => {
-          logError('message-new-failed', err.message || String(err));
-        });
-
-        return;
-      }
-
-      // ------------------------------------------------------
-      // UPDATE MESSAGE
-      // ------------------------------------------------------
-      if (type === "message:update") {
-        const { message } = msg;
-
-        if (!message || !message.id) {
-          logError('update-missing-fields', JSON.stringify(msg));
-          return;
-        }
-
-        const messageId = message.id;
-        const content   = message.content;
-
-        fetch(`${restUrl}&id=${encodeURIComponent(messageId)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content })
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            logError('update-rest-failed', `status=${res.status} body=${text}`);
-            return;
-          }
-        })
-        .then(() => {
-          broadcastToRoom(room, {
-            type: "message:update",
-            message: {
-              id: messageId,
-              content,
-              updated_at: new Date().toISOString()
-            }
-          });
-        })
-        .catch(err => {
-          logError('update-failed', err.message || String(err));
-        });
-
-        return;
-      }
-
-      // ------------------------------------------------------
-      // DELETE MESSAGE
-      // ------------------------------------------------------
-      if (type === "message:delete") {
-        const messageId = msg.message_id;
-
-        if (!messageId) {
-          logError('delete-missing-id', JSON.stringify(msg));
-          return;
-        }
-
-        fetch(`${restUrl}&id=${encodeURIComponent(messageId)}`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" }
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            logError('delete-rest-failed', `status=${res.status} body=${text}`);
-            return;
-          }
-        })
-        .then(() => {
-          broadcastToRoom(room, {
-            type: "message:delete",
-            message: { id: messageId }
-          });
-        })
-        .catch(err => {
-          logError('delete-failed', err.message || String(err));
-        });
-
-        return;
-      }
-
-      // ------------------------------------------------------
-      // JOIN ROOM
-      // ------------------------------------------------------
-      if (type === "join") {
-        const { chatType, chatId } = msg;
-
-        if (!chatType || !chatId) {
-          logError('join-missing-fields', JSON.stringify(msg));
-          return;
-        }
-
-        const joinRoom = getRoomName(chatType, chatId);
-        meta.rooms.add(joinRoom);
-
-        ws.send(JSON.stringify({
-          type: "joined",
-          room: joinRoom
-        }));
-
-        return;
-      }
-
-      logError('unknown-type', JSON.stringify(msg));
-    });
-
-    ws.on('close', (code, reason) => {
-      disconnectLog.push({
-        userId: meta.userId,
-        code,
-        reason: reason ? reason.toString() : '',
-        time: new Date().toISOString()
-      });
-
-      if (disconnectLog.length > 100) disconnectLog.shift();
-
-      clients.delete(ws);
-    });
-
-    ws.on('error', (err) => {
-      logError('ws-error', err.message || String(err));
-    });
 
   } catch (err) {
     logError('connection-error', err.message || String(err));
     try { ws.close(); } catch(e){}
+    return;
   }
+
+  // ------------------------------------------------------
+  // MESSAGE HANDLER
+  // ------------------------------------------------------
+  ws.on('message', (data) => {
+    console.log('📩 RAW WS MESSAGE:', data.toString());
+    messageCount++;
+
+    let msg;
+    try {
+      msg = JSON.parse(data.toString());
+    } catch {
+      logError('invalid-json', data.toString());
+      return;
+    }
+
+    const { type } = msg;
+    const chatType = msg.chatType;
+    const chatId   = msg.chatId;
+
+    if (!chatType || !chatId) {
+      logError('missing-chatType', JSON.stringify(msg));
+      return;
+    }
+
+    const room    = getRoomName(chatType, chatId);
+    const restUrl = getRestUrl(chatType);
+
+    roomActivity[room] = (roomActivity[room] || 0) + 1;
+
+    // ------------------------------------------------------
+    // ATTACHMENT
+    // ------------------------------------------------------
+    if (type === "attachment") {
+      const now = new Date().toISOString();
+
+      const payload = {
+        type: "attachment",
+        content: msg.content,
+        fileName: msg.fileName,
+        mime: msg.mime,
+        user_id: ws.meta.userId,
+        body_chat_id: chatId,
+        created_at: now
+      };
+
+      fetch(restUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          logError('attachment-rest-failed', `status=${res.status} body=${text}`);
+          return;
+        }
+        return res.json();
+      })
+      .then(saved => {
+        if (!saved) return;
+
+        broadcastToRoom(room, {
+          type: "attachment",
+          message: saved
+        });
+      })
+      .catch(err => {
+        logError('attachment-failed', err.message || String(err));
+      });
+
+      return;
+    }
+
+    // ------------------------------------------------------
+    // NEW MESSAGE
+    // ------------------------------------------------------
+    if (type === "message:new") {
+      const payload = {
+        type: "message",
+        content: msg.message,
+        author_id: ws.meta.userId,
+        author_name: ws.meta.name,
+        body_chat_id: chatId
+      };
+
+      fetch(restUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          logError('message-new-rest-failed', `status=${res.status} body=${text}`);
+          return;
+        }
+        return res.json();
+      })
+      .then(saved => {
+        if (!saved) return;
+
+        broadcastToRoom(room, {
+          type: "message:new",
+          message: saved
+        });
+      })
+      .catch(err => {
+        logError('message-new-failed', err.message || String(err));
+      });
+
+      return;
+    }
+
+    // ------------------------------------------------------
+    // UPDATE MESSAGE
+    // ------------------------------------------------------
+    if (type === "message:update") {
+      const { message } = msg;
+
+      if (!message || !message.id) {
+        logError('update-missing-fields', JSON.stringify(msg));
+        return;
+      }
+
+      const messageId = message.id;
+      const content   = message.content;
+
+      fetch(`${restUrl}&id=${encodeURIComponent(messageId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          logError('update-rest-failed', `status=${res.status} body=${text}`);
+          return;
+        }
+      })
+      .then(() => {
+        broadcastToRoom(room, {
+          type: "message:update",
+          message: {
+            id: messageId,
+            content,
+            updated_at: new Date().toISOString()
+          }
+        });
+      })
+      .catch(err => {
+        logError('update-failed', err.message || String(err));
+      });
+
+      return;
+    }
+
+    // ------------------------------------------------------
+    // DELETE MESSAGE
+    // ------------------------------------------------------
+    if (type === "message:delete") {
+      const messageId = msg.message_id;
+
+      if (!messageId) {
+        logError('delete-missing-id', JSON.stringify(msg));
+        return;
+      }
+
+      fetch(`${restUrl}&id=${encodeURIComponent(messageId)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+      })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          logError('delete-rest-failed', `status=${res.status} body=${text}`);
+          return;
+        }
+      })
+      .then(() => {
+        broadcastToRoom(room, {
+          type: "message:delete",
+          message: { id: messageId }
+        });
+      })
+      .catch(err => {
+        logError('delete-failed', err.message || String(err));
+      });
+
+      return;
+    }
+
+    // ------------------------------------------------------
+    // JOIN ROOM
+    // ------------------------------------------------------
+    if (type === "join") {
+      const joinRoom = getRoomName(chatType, chatId);
+      ws.meta.rooms.add(joinRoom);
+
+      ws.send(JSON.stringify({
+        type: "joined",
+        room: joinRoom
+      }));
+
+      return;
+    }
+
+    logError('unknown-type', JSON.stringify(msg));
+  });
+
+  // ------------------------------------------------------
+  // CLOSE + ERROR HANDLERS
+  // ------------------------------------------------------
+  ws.on('close', (code, reason) => {
+    disconnectLog.push({
+      userId: ws.meta.userId,
+      code,
+      reason: reason ? reason.toString() : '',
+      time: new Date().toISOString()
+    });
+
+    if (disconnectLog.length > 100) disconnectLog.shift();
+
+    clients.delete(ws);
+  });
+
+  ws.on('error', (err) => {
+    logError('ws-error', err.message || String(err));
+  });
 });
 
 // ------------------------------------------------------
