@@ -39,7 +39,7 @@ process.on('unhandledRejection', (reason) => {
 // ------------------------------------------------------
 // In-memory presence
 // ------------------------------------------------------
-const clients = new Map(); // ws -> { userId, name, rooms: Set<string> }
+const clients = new Map();
 
 // ------------------------------------------------------
 // Telemetry
@@ -134,10 +134,8 @@ function getRoomName(chatType, chatId) {
   return `${chatType}_chat_${chatId}`;
 }
 
-// Unified HOH REST base
 const HOH_REST_BASE = "https://dev.heartofhope777.site/wp-json/hoh/v1";
 
-// Build REST URL for a given chatType (room)
 function getRestUrl(chatType) {
   return `${HOH_REST_BASE}/message?room=${encodeURIComponent(chatType)}`;
 }
