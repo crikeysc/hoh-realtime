@@ -379,12 +379,12 @@ wss.on('connection', (ws, req) => {
     // ------------------------------------------------------
     if (type === "message:delete") {
       const messageId = msg.message_id;
-
+    
       if (!messageId) {
         logError('delete-missing-id', JSON.stringify(msg));
         return;
       }
-
+    
       fetch(`${restUrl}&id=${encodeURIComponent(messageId)}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" }
@@ -399,13 +399,16 @@ wss.on('connection', (ws, req) => {
       .then(() => {
         broadcastToRoom(room, {
           type: "message:delete",
-          message: { id: messageId }
+          chatType: "body",
+          chatId: chatId,
+          message_id: messageId,
+          user_id: meta.userId
         });
       })
       .catch(err => {
         logError('delete-failed', err.message || String(err));
       });
-
+    
       return;
     }
 
