@@ -402,7 +402,7 @@ wss.on('connection', (ws, req) => {
           chatType: "body",
           chatId: chatId,
           message_id: messageId,
-          user_id: meta.userId
+          user_id: ws.meta.userId
         });
       })
       .catch(err => {
