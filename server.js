@@ -59,72 +59,93 @@ wss.on("connection", (ws, req) => {
     rooms[room].add(ws);
 
     // -----------------------------
-    // MESSAGE HANDLER (scaffolded)
-    // -----------------------------
-    ws.on("message", (data) => {
-        let msg;
+// MESSAGE HANDLER (scaffolded)
+// -----------------------------
+ws.on("message", (data) => {
+    let msg;
 
-        // 1. Parse safely
-        try {
-            msg = JSON.parse(data);
-        } catch (err) {
-            console.error("❌ Invalid JSON from client:", err);
-            return;
-        }
+    // 1. Parse safely
+    try {
+        msg = JSON.parse(data);
+    } catch (err) {
+        console.error("❌ Invalid JSON from client:", err);
+        return;
+    }
 
-        // 2. Validate base structure
-        if (!msg || typeof msg !== "object") {
-            console.error("❌ Invalid message format:", msg);
-            return;
-        }
+    // 2. Validate base structure
+    if (!msg || typeof msg !== "object") {
+        console.error("❌ Invalid message format:", msg);
+        return;
+    }
 
-        // 3. Route by type
-        switch (msg.type) {
+    // 3. Route by type
+    switch (msg.type) {
 
-            // -----------------------------
-            // NORMAL CHAT MESSAGE
-            // -----------------------------
-            case "message":
-                broadcast(room, {
-                    type: "message",
-                    user: msg.user,
-                    role: msg.role,
-                    message: msg.message,
-                    timestamp: msg.timestamp,
-                    id: msg.id
-                });
-                break;
+        // -----------------------------
+        // NORMAL CHAT MESSAGE
+        // -----------------------------
+        case "message":
+            broadcast(room, {
+                type: "message",
+                user: msg.user,
+                role: msg.role,
+                message: msg.message,
+                timestamp: msg.timestamp,
+                id: msg.id
+            });
+            break;
 
-            // -----------------------------
-            // DELETE MESSAGE
-            // -----------------------------
-            case "delete":
-                if (!msg.id) {
-                    console.error("❌ Delete event missing ID");
-                    return;
-                }
+        // -----------------------------
+        // DELETE MESSAGE
+        // -----------------------------
+        case "delete":
+            if (!msg.id) {
+                console.error("❌ Delete event missing ID");
+                return;
+            }
 
-                broadcast(room, {
-                    type: "delete",
-                    id: msg.id
-                });
-                break;
+            broadcast(room, {
+                type: "delete",
+                id: msg.id
+            });
+            break;
 
-            // -----------------------------
-            // FUTURE EVENT TYPES
-            // -----------------------------
-            case "edit":
-                // scaffold for future editing support
-                break;
+        // -----------------------------
+        // EDIT MESSAGE (now implemented)
+        // -----------------------------
+        case "edit":
+            if (!msg.id || !msg.content) {
+                console.error("❌ Edit event missing fields");
+                return;
+            }
 
-            case "typing":
-                // scaffold for typing indicators
-                break;
+            broadcast(room, {
+                type: "edit",
+                id: msg.id,
+                content: msg.content
+            });
+            break;
 
-            default:
-                console.warn("⚠️ Unknown message type:", msg.type);
-        }
-    });
+        // -----------------------------
+        // FUTURE EVENT TYPES
+        // -----------------------------
+        case "typing":
+            // scaffold for typing indicators
+            break;
+
+        default:
+            console.warn("⚠️ Unknown message type:", msg.type);
+    }
+});
+
+// -----------------------------
+// ON CLOSE
+// -----------------------------
+ws.on("close", () => {
+    rooms[room].delete(ws);
+    console.log(`🔌 Client disconnected from room: ${room}`);
+});
+
 
     // -----------------------------
     // ON CLOSE
