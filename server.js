@@ -44,6 +44,20 @@ function getRoomFromUrl(url) {
 
 
 // -----------------------------
+// BROADCAST TO A ROOM
+// -----------------------------
+function broadcast(room, payload) {
+    const message = JSON.stringify(payload);
+
+    rooms[room].forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
+
+
+// -----------------------------
 // ON NEW CONNECTION
 // -----------------------------
 wss.on("connection", (ws, req) => {
@@ -59,93 +73,93 @@ wss.on("connection", (ws, req) => {
     rooms[room].add(ws);
 
     // -----------------------------
-// MESSAGE HANDLER (scaffolded)
-// -----------------------------
-ws.on("message", (data) => {
-    let msg;
+    // MESSAGE HANDLER (scaffolded)
+    // -----------------------------
+    ws.on("message", (data) => {
+        let msg;
 
-    // 1. Parse safely
-    try {
-        msg = JSON.parse(data);
-    } catch (err) {
-        console.error("❌ Invalid JSON from client:", err);
-        return;
-    }
+        // 1. Parse safely
+        try {
+            msg = JSON.parse(data);
+        } catch (err) {
+            console.error("❌ Invalid JSON from client:", err);
+            return;
+        }
 
-    // 2. Validate base structure
-    if (!msg || typeof msg !== "object") {
-        console.error("❌ Invalid message format:", msg);
-        return;
-    }
+        // 2. Validate base structure
+        if (!msg || typeof msg !== "object") {
+            console.error("❌ Invalid message format:", msg);
+            return;
+        }
 
-    // 3. Route by type
-    switch (msg.type) {
+        // 3. Route by type
+        switch (msg.type) {
 
-        // -----------------------------
-        // NORMAL CHAT MESSAGE
-        // -----------------------------
-        case "message":
-            broadcast(room, {
-                type: "message",
-                user: msg.user,
-                role: msg.role,
-                message: msg.message,
-                timestamp: msg.timestamp,
-                id: msg.id
-            });
-            break;
+            // -----------------------------
+            // NORMAL CHAT MESSAGE
+            // -----------------------------
+            case "message":
+                broadcast(room, {
+                    type: "message",
+                    id: msg.id,
+                    user: msg.user,
+                    role: msg.role,
+                    message: msg.message,
+                    timestamp: msg.timestamp
+                });
+                break;
 
-        // -----------------------------
-        // DELETE MESSAGE
-        // -----------------------------
-        case "delete":
-            if (!msg.id) {
-                console.error("❌ Delete event missing ID");
-                return;
-            }
+            // -----------------------------
+            // DELETE MESSAGE
+            // -----------------------------
+            case "delete":
+                if (!msg.id) {
+                    console.error("❌ Delete event missing ID");
+                    return;
+                }
 
-            broadcast(room, {
-                type: "delete",
-                id: msg.id
-            });
-            break;
+                broadcast(room, {
+                    type: "delete",
+                    id: msg.id
+                });
+                break;
 
-        // -----------------------------
-        // EDIT MESSAGE (now implemented)
-        // -----------------------------
-        case "edit":
-            if (!msg.id || !msg.content) {
-                console.error("❌ Edit event missing fields");
-                return;
-            }
+            // -----------------------------
+            // EDIT MESSAGE
+            // -----------------------------
+            case "edit":
+                if (!msg.id || !msg.content) {
+                    console.error("❌ Edit event missing fields");
+                    return;
+                }
 
-            broadcast(room, {
-                type: "edit",
-                id: msg.id,
-                content: msg.content
-            });
-            break;
+                broadcast(room, {
+                    type: "edit",
+                    id: msg.id,
+                    content: msg.content
+                });
+                break;
 
-        // -----------------------------
-        // FUTURE EVENT TYPES
-        // -----------------------------
-        case "typing":
-            // scaffold for typing indicators
-            break;
+            // -----------------------------
+            // TYPING INDICATORS (future)
+            // -----------------------------
+            case "typing":
+                // Example:
+                // broadcast(room, { type: "typing", user: msg.user });
+                break;
 
-        default:
-            console.warn("⚠️ Unknown message type:", msg.type);
-    }
-});
+            // -----------------------------
+            // PRESENCE (future)
+            // -----------------------------
+            case "presence":
+                // Example:
+                // broadcast(room, { type: "presence", user: msg.user, status: msg.status });
+                break;
 
-// -----------------------------
-// ON CLOSE
-// -----------------------------
-ws.on("close", () => {
-    rooms[room].delete(ws);
-    console.log(`🔌 Client disconnected from room: ${room}`);
-});
-
+            default:
+                console.warn("⚠️ Unknown message type:", msg.type);
+        }
+    });
 
     // -----------------------------
     // ON CLOSE
@@ -155,21 +169,6 @@ ws.on("close", () => {
         console.log(`🔌 Client disconnected from room: ${room}`);
     });
 });
-
-
-
-// -----------------------------
-// BROADCAST TO A ROOM
-// -----------------------------
-function broadcast(room, payload) {
-    const message = JSON.stringify(payload);
-
-    rooms[room].forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
-    });
-}
 
 
 // -----------------------------
