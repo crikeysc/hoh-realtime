@@ -58,20 +58,83 @@ wss.on("connection", (ws, req) => {
     console.log(`🔌 New WebSocket connection → Room: ${room}`);
     rooms[room].add(ws);
 
+    // -----------------------------
+    // MESSAGE HANDLER (scaffolded)
+    // -----------------------------
     ws.on("message", (data) => {
+        let msg;
+
+        // 1. Parse safely
         try {
-            const msg = JSON.parse(data);
-            broadcast(room, msg);
+            msg = JSON.parse(data);
         } catch (err) {
-            console.error("❌ Invalid message:", err);
+            console.error("❌ Invalid JSON from client:", err);
+            return;
+        }
+
+        // 2. Validate base structure
+        if (!msg || typeof msg !== "object") {
+            console.error("❌ Invalid message format:", msg);
+            return;
+        }
+
+        // 3. Route by type
+        switch (msg.type) {
+
+            // -----------------------------
+            // NORMAL CHAT MESSAGE
+            // -----------------------------
+            case "message":
+                broadcast(room, {
+                    type: "message",
+                    user: msg.user,
+                    role: msg.role,
+                    message: msg.message,
+                    timestamp: msg.timestamp,
+                    id: msg.id
+                });
+                break;
+
+            // -----------------------------
+            // DELETE MESSAGE
+            // -----------------------------
+            case "delete":
+                if (!msg.id) {
+                    console.error("❌ Delete event missing ID");
+                    return;
+                }
+
+                broadcast(room, {
+                    type: "delete",
+                    id: msg.id
+                });
+                break;
+
+            // -----------------------------
+            // FUTURE EVENT TYPES
+            // -----------------------------
+            case "edit":
+                // scaffold for future editing support
+                break;
+
+            case "typing":
+                // scaffold for typing indicators
+                break;
+
+            default:
+                console.warn("⚠️ Unknown message type:", msg.type);
         }
     });
 
+    // -----------------------------
+    // ON CLOSE
+    // -----------------------------
     ws.on("close", () => {
         rooms[room].delete(ws);
         console.log(`🔌 Client disconnected from room: ${room}`);
     });
 });
+
 
 
 // -----------------------------
