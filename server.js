@@ -105,69 +105,67 @@ wss.on("connection", (ws, req) => {
         // 3. Route by type
         switch (msg.type) {
 
-            // -----------------------------
-            // NORMAL CHAT MESSAGE
-            // -----------------------------
-            case "message":
-                broadcast(room, {
-                    type: "message",
-                    id: msg.id,
-                    user: msg.user,
-                    role: msg.role,
-                    message: msg.message,
-                    timestamp: msg.timestamp
-                });
-                break;
-
-            // -----------------------------
-            // DELETE MESSAGE
-            // -----------------------------
-            case "delete":
-                if (!msg.id) {
-                    console.error("❌ Delete event missing ID");
-                    return;
-                }
-
-                broadcast(room, {
-                    type: "delete",
-                    id: msg.id
-                });
-                break;
-
-            // -----------------------------
-            // EDIT MESSAGE
-            // -----------------------------
-            case "edit":
-                if (!msg.id || !msg.content) {
-                    console.error("❌ Edit event missing fields");
-                    return;
-                }
-
-                broadcast(room, {
-                    type: "edit",
-                    id: msg.id,
-                    content: msg.content
-                });
-                break;
-
-            // -----------------------------
-            // TYPING INDICATORS (future)
-            // -----------------------------
-            case "typing":
-                // broadcast(room, { type: "typing", user: msg.user });
-                break;
-
-            // -----------------------------
-            // PRESENCE (future)
-            // -----------------------------
-            case "presence":
-                // broadcast(room, { type: "presence", user: msg.user, status: msg.status });
-                break;
-
-            default:
-                console.warn("⚠️ Unknown message type:", msg.type);
-        }
-    });
+        // BodyChat / TeamChat events
+        case "message:new":
+            broadcast(room, {
+                type: "message:new",
+                message: msg.message
+            });
+            break;
+    
+        case "message:update":
+            broadcast(room, {
+                type: "message:update",
+                message_id: msg.message_id,
+                content: msg.content
+            });
+            break;
+    
+        case "message:delete":
+            broadcast(room, {
+                type: "message:delete",
+                message_id: msg.message_id
+            });
+            break;
+    
+        // Legacy scaffold events
+        case "message":
+            broadcast(room, {
+                type: "message",
+                id: msg.id,
+                user: msg.user,
+                role: msg.role,
+                message: msg.message,
+                timestamp: msg.timestamp
+            });
+            break;
+    
+        case "delete":
+            broadcast(room, {
+                type: "delete",
+                id: msg.id
+            });
+            break;
+    
+        case "edit":
+            broadcast(room, {
+                type: "edit",
+                id: msg.id,
+                content: msg.content
+            });
+            break;
+    
+        case "typing":
+            // broadcast(room, { type: "typing", user: msg.user });
+            break;
+    
+        case "presence":
+            // broadcast(room, { type: "presence", user: msg.user, status: msg.status });
+            break;
+    
+        default:
+            console.warn("⚠️ Unknown message type:", msg.type);
+    }
 
     // -----------------------------
     // ON CLOSE
