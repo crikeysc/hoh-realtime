@@ -35,12 +35,13 @@ const rooms = {
 // -----------------------------
 function getRoomFromUrl(url) {
     try {
-        const parts = url.split("/");
-        return parts[parts.length - 1]; // "body"
+        const parsed = new URL(url, "ws://localhost");
+        return parsed.searchParams.get("rooms");
     } catch {
         return null;
     }
 }
+
 
 
 // -----------------------------
