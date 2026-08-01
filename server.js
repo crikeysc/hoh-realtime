@@ -34,8 +34,6 @@ function ensureRoom(room) {
 
 // -----------------------------
 // PARSE ROOM FROM URL
-// Example client URL:
-// wss://hoh-realtime-ws.onrender.com/?token=JWT&rooms=body_chat_949
 // -----------------------------
 function getRoomFromUrl(url) {
     try {
@@ -83,12 +81,11 @@ wss.on("connection", (ws, req) => {
     console.log(`🔌 New WebSocket connection → Room: ${room}`);
 
     // -----------------------------
-    // MESSAGE HANDLER (scaffolded)
+    // MESSAGE HANDLER
     // -----------------------------
     ws.on("message", (data) => {
         let msg;
 
-        // 1. Parse safely
         try {
             msg = JSON.parse(data);
         } catch (err) {
@@ -96,76 +93,74 @@ wss.on("connection", (ws, req) => {
             return;
         }
 
-        // 2. Validate base structure
         if (!msg || typeof msg !== "object") {
             console.error("❌ Invalid message format:", msg);
             return;
         }
 
-        // 3. Route by type
         switch (msg.type) {
 
-        // BodyChat / TeamChat events
-        case "message:new":
-            broadcast(room, {
-                type: "message:new",
-                message: msg.message
-            });
-            break;
-    
-        case "message:update":
-            broadcast(room, {
-                type: "message:update",
-                message_id: msg.message_id,
-                content: msg.content
-            });
-            break;
-    
-        case "message:delete":
-            broadcast(room, {
-                type: "message:delete",
-                message_id: msg.message_id
-            });
-            break;
-    
-        // Legacy scaffold events
-        case "message":
-            broadcast(room, {
-                type: "message",
-                id: msg.id,
-                user: msg.user,
-                role: msg.role,
-                message: msg.message,
-                timestamp: msg.timestamp
-            });
-            break;
-    
-        case "delete":
-            broadcast(room, {
-                type: "delete",
-                id: msg.id
-            });
-            break;
-    
-        case "edit":
-            broadcast(room, {
-                type: "edit",
-                id: msg.id,
-                content: msg.content
-            });
-            break;
-    
-        case "typing":
-            // broadcast(room, { type: "typing", user: msg.user });
-            break;
-    
-        case "presence":
-            // broadcast(room, { type: "presence", user: msg.user, status: msg.status });
-            break;
-    
-        default:
-            console.warn("⚠️ Unknown message type:", msg.type);
-    }
+            // BodyChat / TeamChat events
+            case "message:new":
+                broadcast(room, {
+                    type: "message:new",
+                    message: msg.message
+                });
+                break;
+
+            case "message:update":
+                broadcast(room, {
+                    type: "message:update",
+                    message_id: msg.message_id,
+                    content: msg.content
+                });
+                break;
+
+            case "message:delete":
+                broadcast(room, {
+                    type: "message:delete",
+                    message_id: msg.message_id
+                });
+                break;
+
+            // Legacy scaffold events
+            case "message":
+                broadcast(room, {
+                    type: "message",
+                    id: msg.id,
+                    user: msg.user,
+                    role: msg.role,
+                    message: msg.message,
+                    timestamp: msg.timestamp
+                });
+                break;
+
+            case "delete":
+                broadcast(room, {
+                    type: "delete",
+                    id: msg.id
+                });
+                break;
+
+            case "edit":
+                broadcast(room, {
+                    type: "edit",
+                    id: msg.id,
+                    content: msg.content
+                });
+                break;
+
+            case "typing":
+                break;
+
+            case "presence":
+                break;
+
+            default:
+                console.warn("⚠️ Unknown message type:", msg.type);
+        }
+    });   // ← THIS WAS MISSING
+
 
     // -----------------------------
     // ON CLOSE
