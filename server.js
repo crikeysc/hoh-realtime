@@ -62,13 +62,10 @@ function broadcast(room, payload) {
 // ON NEW CONNECTION
 // -----------------------------
 wss.on("connection", (ws, req) => {
-    const room = getRoomFromUrl(req.url);
+    const parsed = new URL(req.url, "ws://localhost");
+    const token  = parsed.searchParams.get("token");
+    const room   = parsed.searchParams.get("rooms");
 
-    if (!room || !rooms[room]) {
-        console.log("❌ Invalid room:", req.url);
-        ws.close();
-        return;
-    }
 
     console.log(`🔌 New WebSocket connection → Room: ${room}`);
     rooms[room].add(ws);
