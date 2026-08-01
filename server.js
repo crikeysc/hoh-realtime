@@ -20,18 +20,22 @@ console.log(`🔌 Listening on port ${PORT}`);
 
 
 // -----------------------------
-// ROOM → CLIENTS MAP
+// ROOM → CLIENTS MAP (dynamic)
 // -----------------------------
-const rooms = {
-    body: new Set(),
-    team: new Set(),
-    foyer: new Set()
-};
+const rooms = new Map();
+
+function ensureRoom(room) {
+    if (!rooms.has(room)) {
+        rooms.set(room, new Set());
+    }
+    return rooms.get(room);
+}
 
 
 // -----------------------------
 // PARSE ROOM FROM URL
-// Example: ws://server/ws/body
+// Example client URL:
+// wss://hoh-realtime-ws.onrender.com/?token=JWT&rooms=body_chat_949
 // -----------------------------
 function getRoomFromUrl(url) {
     try {
@@ -43,14 +47,15 @@ function getRoomFromUrl(url) {
 }
 
 
-
 // -----------------------------
 // BROADCAST TO A ROOM
 // -----------------------------
 function broadcast(room, payload) {
     const message = JSON.stringify(payload);
+    const roomSet = rooms.get(room);
+    if (!roomSet) return;
 
-    rooms[room].forEach((client) => {
+    roomSet.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(message);
         }
@@ -66,9 +71,16 @@ wss.on("connection", (ws, req) => {
     const token  = parsed.searchParams.get("token");
     const room   = parsed.searchParams.get("rooms");
 
+    if (!room) {
+        console.log("❌ No room provided:", req.url);
+        ws.close();
+        return;
+    }
+
+    const roomSet = ensureRoom(room);
+    roomSet.add(ws);
 
     console.log(`🔌 New WebSocket connection → Room: ${room}`);
-    rooms[room].add(ws);
 
     // -----------------------------
     // MESSAGE HANDLER (scaffolded)
@@ -142,7 +154,6 @@ wss.on("connection", (ws, req) => {
             // TYPING INDICATORS (future)
             // -----------------------------
             case "typing":
-                // Example:
                 // broadcast(room, { type: "typing", user: msg.user });
                 break;
 
@@ -150,7 +161,6 @@ wss.on("connection", (ws, req) => {
             // PRESENCE (future)
             // -----------------------------
             case "presence":
-                // Example:
                 // broadcast(room, { type: "presence", user: msg.user, status: msg.status });
                 break;
 
@@ -163,7 +173,7 @@ wss.on("connection", (ws, req) => {
     // ON CLOSE
     // -----------------------------
     ws.on("close", () => {
-        rooms[room].delete(ws);
+        roomSet.delete(ws);
         console.log(`🔌 Client disconnected from room: ${room}`);
     });
 });
@@ -183,7 +193,7 @@ server.on("request", async (req, res) => {
                 const payload = JSON.parse(body);
                 const room = payload.room;
 
-                if (rooms[room]) {
+                if (room) {
                     broadcast(room, payload);
                     console.log(`📢 Broadcast to room "${room}"`);
                 }
